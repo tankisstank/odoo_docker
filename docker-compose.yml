@@ -8,7 +8,7 @@ services:
       - POSTGRES_PASSWORD=odoo
     # Esto monta una carpeta de tu disco D: (o C:) dentro del contenedor
     volumes:
-      - "D:\\dev_projects\\odoo_docker\\postgres_data:/var/lib/postgresql/data"
+      - "E:\\repo\\odoo_docker\\postgres_data:/var/lib/postgresql/data"
     restart: always
 
   odoo:
@@ -26,5 +26,6 @@ services:
       - DB_NAME=odoo
     # (Opcional) Si quieres persistir algo de Odoo (archivos, logs, etc.)
     volumes:
-      - "D:\\dev_projects\\odoo_docker\\odoo_data:/var/lib/odoo"
+      - "./odoo_data:/var/lib/odoo"
+      - "./custom_addons:/mnt/extra-addons"
     restart: always
