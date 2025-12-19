@@ -1,0 +1,185 @@
+<odoo>
+    <!-- Tree View -->
+    <record id="view_product_price_tree" model="ir.ui.view">
+        <field name="name">product.template.price.tree</field>
+        <field name="model">product.template</field>
+        <field name="arch" type="xml">
+            <tree create="0" editable="bottom">
+                <button name="action_open_product_form" type="object" icon="fa-external-link" title="Mở chi tiết sản phẩm" string="Xem chi tiết"/>
+                <field name="name" readonly="1"/>
+                <field name="uom_id" string="Đơn vị"/>
+                <field name="price_ratio" string="Tỷ lệ"/>
+                <field name="standard_price" string="Giá mua"/>
+                <field name="list_price" string="Giá bán"/>
+                <field name="sale_ok" string="Có thể bán"/>
+                <field name="purchase_ok" string="Có thể mua"/>
+                <field name="hidden" string="Ẩn sản phẩm"/>
+                <button name="action_view_price_history" type="object" icon="fa-history" title="Lịch sử giá" string="Xem lịch sử giá"/>
+            </tree>
+        </field>
+    </record>
+
+    <!-- Search View -->
+    <record id="view_product_price_search" model="ir.ui.view">
+        <field name="name">product.template.price.search</field>
+        <field name="model">product.template</field>
+        <field name="arch" type="xml">
+            <search string="Tìm kiếm sản phẩm">
+                <field name="name" string="Tên sản phẩm"/>
+                <field name="default_code" string="Mã sản phẩm"/>
+                <field name="categ_id" string="Danh mục" filter_domain="[('categ_id', 'child_of', self)]"/>
+                <filter string="Không ẩn" name="visible" domain="[('hidden', '=', False)]"/>
+                <filter string="Đã ẩn" name="hidden" domain="[('hidden', '=', True)]"/>
+            </search>
+        </field>
+    </record>
+
+    <!-- Graph View -->
+    <record id="view_product_price_history_graph" model="ir.ui.view">
+        <field name="name">product.price.history.graph</field>
+        <field name="model">product.price.history</field>
+        <field name="arch" type="xml">
+            <graph string="Biểu đồ lịch sử giá" type="line">
+                <field name="change_date" type="row" interval="day"/>
+                <field name="standard_price" type="measure"/>
+                <field name="list_price" type="measure"/>
+            </graph>
+        </field>
+    </record>
+
+    <!-- History Tree View -->
+    <record id="view_product_price_history_tree" model="ir.ui.view">
+        <field name="name">product.price.history.tree</field>
+        <field name="model">product.price.history</field>
+        <field name="arch" type="xml">
+            <tree>
+                <field name="change_date"/>
+                <field name="user_id"/>
+                <field name="standard_price"/>
+                <field name="list_price"/>
+                <button name="action_rollback" type="object" string="Rollback"
+                        help="Khôi phục lại giá từ phiên bản này"
+                        confirm="Bạn có chắc chắn muốn khôi phục lại giá từ phiên bản này không? Một bản ghi lịch sử mới sẽ được tạo cho hành động này."/>
+            </tree>
+        </field>
+    </record>
+
+    <!-- History Form View -->
+    <record id="view_product_price_history_form" model="ir.ui.view">
+        <field name="name">product.price.history.form</field>
+        <field name="model">product.price.history</field>
+        <field name="arch" type="xml">
+            <form string="Chi tiết lịch sử giá">
+                <sheet>
+                    <group>
+                        <field name="product_template_id"/>
+                        <field name="change_date"/>
+                        <field name="user_id"/>
+                        <field name="standard_price"/>
+                        <field name="list_price"/>
+                    </group>
+                </sheet>
+            </form>
+        </field>
+    </record>
+
+    <!-- Product Template Form View Inherit -->
+    <record id="view_product_template_price_form" model="ir.ui.view">
+        <field name="name">product.template.price.form</field>
+        <field name="model">product.template</field>
+        <field name="inherit_id" ref="product.product_template_form_view"/>
+        <field name="arch" type="xml">
+            <xpath expr="//notebook" position="inside">
+                <page string="Lịch sử giá">
+                    <field name="history_ids" readonly="1">
+                        <tree>
+                            <field name="change_date"/>
+                            <field name="user_id"/>
+                            <field name="standard_price"/>
+                            <field name="list_price"/>
+                            <button name="action_rollback" type="object" string="Rollback"
+                                    help="Khôi phục lại giá từ phiên bản này"
+                                    confirm="Bạn có chắc chắn muốn khôi phục lại giá từ phiên bản này không? Một bản ghi lịch sử mới sẽ được tạo cho hành động này."/>
+                        </tree>
+                    </field>
+                </page>
+            </xpath>
+        </field>
+    </record>
+
+    <!-- Action: All Products -->
+    <record id="action_product_price_manager" model="ir.actions.act_window">
+        <field name="name">Tất cả sản phẩm</field>
+        <field name="res_model">product.template</field>
+        <field name="view_mode">tree,form</field>
+        <field name="domain">[]</field>
+        <field name="context">{'search_default_visible': 1}</field>
+        <field name="view_ids" eval="[(5, 0, 0),
+            (0, 0, {'view_mode': 'tree', 'view_id': ref('view_product_price_tree')}),
+            (0, 0, {'view_mode': 'form', 'view_id': ref('view_product_template_price_form')})]"/>
+        <field name="search_view_id" ref="view_product_price_search"/>
+    </record>
+
+    <!-- Action: Gold Products -->
+    <record id="action_product_price_gold" model="ir.actions.act_window">
+        <field name="name">Sản phẩm Vàng</field>
+        <field name="res_model">product.template</field>
+        <field name="view_mode">tree,form</field>
+        <field name="domain">[('categ_id.name', 'ilike', 'Vàng')]</field>
+        <field name="context">{'search_default_visible': 1}</field>
+        <field name="view_ids" eval="[(5, 0, 0),
+            (0, 0, {'view_mode': 'tree', 'view_id': ref('view_product_price_tree')}),
+            (0, 0, {'view_mode': 'form', 'view_id': ref('view_product_template_price_form')})]"/>
+        <field name="search_view_id" ref="view_product_price_search"/>
+    </record>
+
+    <!-- Action: Currency Products -->
+    <record id="action_product_price_currency" model="ir.actions.act_window">
+        <field name="name">Sản phẩm Ngoại tệ</field>
+        <field name="res_model">product.template</field>
+        <field name="view_mode">tree,form</field>
+        <field name="domain">[('categ_id.name', 'ilike', 'Ngoại tệ')]</field>
+        <field name="context">{'search_default_visible': 1}</field>
+        <field name="view_ids" eval="[(5, 0, 0),
+            (0, 0, {'view_mode': 'tree', 'view_id': ref('view_product_price_tree')}),
+            (0, 0, {'view_mode': 'form', 'view_id': ref('view_product_template_price_form')})]"/>
+        <field name="search_view_id" ref="view_product_price_search"/>
+    </record>
+
+    <!-- Action: Create New Product -->
+    <record id="action_product_price_create" model="ir.actions.act_window">
+        <field name="name">Tạo sản phẩm mới</field>
+        <field name="res_model">product.template</field>
+        <field name="view_mode">form</field>
+        <field name="target">current</field>
+    </record>
+
+    <!-- Menus -->
+    <menuitem id="menu_product_price_root"
+              name="Quản lý giá"/>
+
+    <menuitem id="menu_product_price_manager"
+              name="Tất cả sản phẩm"
+              parent="menu_product_price_root"
+              action="action_product_price_manager"
+              sequence="10"/>
+
+    <menuitem id="menu_product_price_gold"
+              name="Sản phẩm Vàng"
+              parent="menu_product_price_root"
+              action="action_product_price_gold"
+              sequence="20"/>
+
+    <menuitem id="menu_product_price_currency"
+              name="Sản phẩm Ngoại tệ"
+              parent="menu_product_price_root"
+              action="action_product_price_currency"
+              sequence="30"/>
+
+    <menuitem id="menu_product_price_create"
+              name="Tạo sản phẩm mới"
+              parent="menu_product_price_root"
+              action="action_product_price_create"
+              sequence="40"/>
+
+</odoo>

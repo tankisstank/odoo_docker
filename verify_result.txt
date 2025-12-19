@@ -1,0 +1,42 @@
+
+--- ILIKE 'dung' ---
+    27  Dung Hiền
+
+--- ILIKE 'du' ---
+    27  Dung Hiền
+   161  Duy Chung TB
+
+--- ILIKE 'Dũng' ---
+     7  A Dũng
+    58  Dũng Béo
+   212  Nguyễn Văn Dũng
+
+==> Kết luận:
+- Tìm 'dung' KHÔNG ra 'Dũng' -> nhiều khả năng extension 'unaccent' CHƯA hoạt động trong DB hoặc Odoo chưa nhận.
+  Hãy thực hiện các bước sau:
+  1) Bật extension trong DB Odoo:
+     CREATE EXTENSION IF NOT EXISTS unaccent;
+  2) Khởi động lại Odoo service (để ORM nhận biết).
+  3) Thử lại script này.
+  4) Nếu vẫn không được, cân nhắc cài OCA base_search_unaccent hoặc ghi đè name_search() dùng trường 'không dấu'.
+
+--- ILIKE 'dung' ---
+    27  Dung Hiền
+
+--- ILIKE 'du' ---
+    27  Dung Hiền
+   161  Duy Chung TB
+
+--- ILIKE 'Dũng' ---
+     7  A Dũng
+    58  Dũng Béo
+   212  Nguyễn Văn Dũng
+
+==> Kết luận:
+- Tìm 'dung' KHÔNG ra 'Dũng' -> nhiều khả năng extension 'unaccent' CHƯA hoạt động trong DB hoặc Odoo chưa nhận.
+  Hãy thực hiện các bước sau:
+  1) Bật extension trong DB Odoo:
+     CREATE EXTENSION IF NOT EXISTS unaccent;
+  2) Khởi động lại Odoo service (để ORM nhận biết).
+  3) Thử lại script này.
+  4) Nếu vẫn không được, cân nhắc cài OCA base_search_unaccent hoặc ghi đè name_search() dùng trường 'không dấu'.

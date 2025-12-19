@@ -1,0 +1,47 @@
+<?xml version="1.0" encoding="utf-8"?>
+<odoo>
+    <record id="view_order_form_trade_in" model="ir.ui.view">
+        <field name="name">sale.order.form.trade.in</field>
+        <field name="model">sale.order</field>
+        <field name="inherit_id" ref="sale.view_order_form"/>
+        <field name="arch" type="xml">
+
+            <!-- Insert Input/Conversion Fields BEFORE the Target Product -->
+            <xpath expr="//field[@name='order_line']/tree/field[@name='product_id']" position="before">
+                <field name="state" invisible="1"/>
+                <field name="is_trade_in" string="Thu mua" readonly="1" force_save="1" optional="hide"/>
+                <field name="original_product_id" string="Tên" optional="show"/>
+                <field name="original_weight" string="TTL" optional="show"/>
+                <field name="loss_weight" string="Hao" optional="hide"/>
+                <field name="gold_purity" string="Tuổi" optional="show"/>
+                <field name="exchange_rate" string="Giá QĐ" optional="hide"/>
+            </xpath>
+
+            <!-- Rename Quantity to reflect conversion result -->
+            <xpath expr="//field[@name='order_line']/tree/field[@name='product_uom_qty']" position="attributes">
+                 <attribute name="string">SL/TL Quy đổi</attribute>
+                 <attribute name="decoration-bf">1</attribute>
+            </xpath>
+
+            <!-- Price & Compensation -->
+            <xpath expr="//field[@name='order_line']/tree/field[@name='price_unit']" position="before">
+                <field name="price_unit_base" string="Giá gốc" optional="hide"/>
+                <field name="price_compensation" string="Bù giá" optional="show" force_save="1"/>
+            </xpath>
+
+            <xpath expr="//field[@name='order_line']/tree/field[@name='price_unit']" position="attributes">
+                <attribute name="string">Thành tiền (Đơn vị)</attribute>
+                <attribute name="force_save">1</attribute>
+                <attribute name="optional">show</attribute>
+            </xpath>
+
+            <!-- Thay thế phần hiển thị tổng để không còn dùng tax_totals (tính cả trade-in) -->
+            <!-- Restoration of Standard Totals -->
+            <xpath expr="//group[@name='sale_total']" position="replace">
+                <group colspan="2" class="oe_right" name="sale_total">
+                    <field name="tax_totals" widget="account-tax-totals-field" nolabel="1" colspan="2" readonly="1"/>
+                </group>
+            </xpath>
+        </field>
+    </record>
+</odoo>

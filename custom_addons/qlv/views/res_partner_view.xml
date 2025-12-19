@@ -1,0 +1,55 @@
+<?xml version="1.0" encoding="utf-8"?>
+<odoo>
+    <!-- Server Action: Tính toán lại Công nợ -->
+    <record id="action_partner_recompute_debt" model="ir.actions.server">
+        <field name="name">Tính toán lại Công nợ</field>
+        <field name="model_id" ref="base.model_res_partner"/>
+        <field name="binding_model_id" ref="base.model_res_partner"/>
+        <field name="binding_view_types">list,form</field>
+        <field name="state">code</field>
+        <field name="code">
+            records.action_recompute_debt()
+        </field>
+    </record>
+
+    <!-- Form View Extension -->
+    <record id="view_partner_form_gold_debt" model="ir.ui.view">
+        <field name="name">res.partner.form.gold.debt</field>
+        <field name="model">res.partner</field>
+        <field name="inherit_id" ref="base.view_partner_form"/>
+        <field name="arch" type="xml">
+            <xpath expr="//field[@name='category_id']" position="after">
+                <field name="is_gold_partner"/>
+            </xpath>
+            
+            <xpath expr="//notebook" position="inside">
+                <page string="Công nợ &amp; Ký gửi" attrs="{'invisible': [('is_gold_partner', '=', False)]}">
+                    <header>
+                        <button name="action_recompute_debt" string="Cập nhật (Tính lại)" type="object" class="btn-secondary"/>
+                        <button name="action_view_debt_details" string="Xem d/s Chi tiết" type="object" class="btn-primary" icon="fa-list"/>
+                    </header>
+                    <group>
+                        <field name="product_debt_summary" nolabel="1"/>
+                    </group>
+                </page>
+            </xpath>
+            
+            <!-- Remove old button box for debt if it conflicts or looks bare -->
+            <!-- We keep the old button logic but point to new action? No, remove smart button, use Tab. -->
+        </field>
+    </record>
+    
+    <!-- Tree View Extension -->
+    <record id="view_partner_tree_gold_debt" model="ir.ui.view">
+        <field name="name">res.partner.tree.gold.debt</field>
+        <field name="model">res.partner</field>
+        <field name="inherit_id" ref="base.view_partner_tree"/>
+        <field name="arch" type="xml">
+             <field name="email" position="after">
+                <!-- Short Summary for List View -->
+                <field name="debt_summary_short" string="Công nợ / Ký gửi" optional="show" decoration-danger="debt_summary_short and 'Nợ' in debt_summary_short"/>
+                <field name="is_gold_partner" optional="hide"/>
+            </field>
+        </field>
+    </record>
+</odoo>

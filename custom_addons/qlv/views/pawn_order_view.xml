@@ -1,0 +1,131 @@
+<?xml version="1.0" encoding="utf-8"?>
+<odoo>
+    <data>
+        <!-- TREE VIEW -->
+        <record id="view_pawn_order_tree" model="ir.ui.view">
+            <field name="name">pawn.order.tree</field>
+            <field name="model">pawn.order</field>
+            <field name="arch" type="xml">
+                <tree string="Phiếu Cầm cố">
+                    <field name="name"/>
+                    <field name="date_order"/>
+                    <field name="partner_id"/>
+                    <field name="amount_loan" sum="Tổng tiền vay"/>
+                    <field name="state" 
+                        widget="badge" 
+                        decoration-info="state == 'draft'" 
+                        decoration-warning="state == 'confirmed'" 
+                        decoration-success="state == 'redeemed'" 
+                        decoration-muted="state == 'cancel'"/>
+                </tree>
+            </field>
+        </record>
+
+        <!-- FORM VIEW -->
+        <record id="view_pawn_order_form" model="ir.ui.view">
+            <field name="name">pawn.order.form</field>
+            <field name="model">pawn.order</field>
+            <field name="arch" type="xml">
+                <form string="Phiếu Cầm cố">
+                    <header>
+                        <!-- Confirm: Draft -> Confirmed -->
+                        <button name="action_confirm" string="Xác nhận Cầm cố" type="object" class="oe_highlight" 
+                            attrs="{'invisible': [('state', '!=', 'draft')]}"/>
+                        
+                        <!-- Redeem: Confirmed -> Redeemed -->
+                        <button name="action_redeem" string="Khách chuộc lại" type="object" class="oe_highlight" 
+                            attrs="{'invisible': [('state', '!=', 'confirmed')]}"/>
+
+                        <!-- Liquidate: Confirmed -> Liquidated -->
+                         <button name="action_liquidate" string="Chuyển sang Mua bán (Thanh lý)" type="object" class="btn-warning"
+                            attrs="{'invisible': [('state', '!=', 'confirmed')]}"
+                            confirm="Bạn có chắc chắn muốn chuyển phiếu này thành Đơn hàng Bán (Trade-in) để thanh lý không?"/>
+
+                        <!-- Cancel -->
+                        <button name="action_cancel" string="Hủy" type="object" 
+                            attrs="{'invisible': [('state', 'in', ('redeemed', 'liquidated', 'cancel'))]}"/>
+
+                        <field name="state" widget="statusbar" statusbar_visible="draft,confirmed,redeemed,liquidated"/>
+                    </header>
+                    <sheet>
+                        <div class="oe_button_box" name="button_box">
+                            <button name="action_view_sale_order" type="object" class="oe_stat_button" icon="fa-usd"
+                                attrs="{'invisible': [('sale_order_id', '=', False)]}">
+                                <div class="o_stat_info">
+                                    <span class="o_stat_text">Đơn Thanh lý</span>
+                                </div>
+                            </button>
+                        </div>
+                        <div class="oe_title">
+                            <h1>
+                                <field name="name" readonly="1"/>
+                            </h1>
+                        </div>
+                        <group>
+                            <group>
+                                <field name="partner_id" widget="res_partner_many2one_context" 
+                                    attrs="{'readonly': [('state', 'in', ('redeemed', 'liquidated', 'cancel'))]}"/>
+                                <field name="date_order" attrs="{'readonly': [('state', 'in', ('redeemed', 'liquidated', 'cancel'))]}"/>
+                            </group>
+                            <group>
+                                <field name="amount_loan" widget="monetary" attrs="{'readonly': [('state', 'in', ('redeemed', 'liquidated', 'cancel'))]}"/>
+                                <field name="interest_rate" attrs="{'readonly': [('state', 'in', ('redeemed', 'liquidated', 'cancel'))]}"/>
+                                <field name="currency_id" invisible="1"/>
+                                <field name="company_id" invisible="1"/>
+                                <field name="sale_order_id" invisible="1"/>
+                            </group>
+                        </group>
+                        <notebook>
+                            <page string="Tài sản Cầm cố (Gửi sổ)">
+                                <field name="pawn_line_ids" attrs="{'readonly': [('state', 'in', ('redeemed', 'liquidated', 'cancel'))]}">
+                                    <tree editable="bottom">
+                                        <field name="product_id"/>
+                                        <field name="description"/>
+                                        <field name="product_uom_qty"/>
+                                        <field name="uom_id" readonly="1"/>
+                                        <field name="price_valuation"/>
+                                        <field name="currency_id" invisible="1"/>
+                                    </tree>
+                                </field>
+                            </page>
+                            <page string="Ghi chú">
+                                <field name="note"/>
+                            </page>
+                        </notebook>
+                    </sheet>
+                    <div class="oe_chatter">
+                        <field name="message_follower_ids"/>
+                        <field name="activity_ids"/>
+                        <field name="message_ids"/>
+                    </div>
+                </form>
+            </field>
+        </record>
+
+        <!-- ACTION -->
+        <record id="action_pawn_order" model="ir.actions.act_window">
+            <field name="name">Phiếu Cầm cố / Vay mượn</field>
+            <field name="type">ir.actions.act_window</field>
+            <field name="res_model">pawn.order</field>
+            <field name="view_mode">tree,form</field>
+            <field name="context">{}</field>
+            <field name="help" type="html">
+                <p class="o_view_nocontent_smiling_face">
+                    Tạo phiếu Cầm cố / Gửi sổ mới
+                </p>
+                <p>
+                    Quản lý việc khách hàng vay tiền và thế chấp tài sản (Vàng).
+                </p>
+            </field>
+        </record>
+
+        <!-- SEQUENCE -->
+        <record id="seq_pawn_order" model="ir.sequence">
+            <field name="name">Pawn Order</field>
+            <field name="code">pawn.order</field>
+            <field name="prefix">CC/</field>
+            <field name="padding">5</field>
+            <field name="company_id" eval="False"/>
+        </record>
+    </data>
+</odoo>

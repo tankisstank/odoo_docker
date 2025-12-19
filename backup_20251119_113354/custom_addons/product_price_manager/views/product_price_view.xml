@@ -1,0 +1,116 @@
+    <odoo>
+    <!-- Tree View (đã có) -->
+    <record id="view_product_price_tree" model="ir.ui.view">
+        <field name="name">product.template.price.tree</field>
+        <field name="model">product.template</field>
+        <field name="arch" type="xml">
+            <tree editable="bottom">
+                <button name="action_open_product_form" type="object" icon="fa-external-link" title="Mở chi tiết sản phẩm"/>
+                <field name="name" readonly="1"/>
+                <field name="standard_price"/>
+                <field name="list_price"/>                
+                <button name="action_view_price_history" type="object" icon="fa-history" title="Xem lịch sử giá"/>
+            </tree>
+        </field>
+    </record>
+
+    <!-- Search View (đã có) -->
+    <record id="view_product_price_search" model="ir.ui.view">
+        <field name="name">product.template.price.search</field>
+        <field name="model">product.template</field>
+        <field name="arch" type="xml">
+            <search string="Tìm kiếm sản phẩm">
+                <field name="name" string="Tên sản phẩm"/>
+                <field name="default_code" string="Mã sản phẩm"/>
+                <field name="categ_id" string="Danh mục" filter_domain="[('categ_id', 'child_of', self)]"/>
+            </search>
+        </field>
+    </record>
+<!-- MỚI: Graph View cho Lịch sử giá -->
+    <record id="view_product_price_history_graph" model="ir.ui.view">
+        <field name="name">product.price.history.graph</field>
+        <field name="model">product.price.history</field>
+        <field name="arch" type="xml">
+            <graph string="Biểu đồ lịch sử giá" type="line">
+                <field name="change_date" type="row" interval="day"/>
+                <field name="standard_price" type="measure"/>
+                <field name="list_price" type="measure"/>
+            </graph>
+        </field>
+    </record>
+
+    <!-- MỚI: Tree View cho cửa sổ Lịch sử giá -->
+    <record id="view_product_price_history_tree" model="ir.ui.view">
+        <field name="name">product.price.history.tree</field>
+        <field name="model">product.price.history</field>
+        <field name="arch" type="xml">
+            <tree>
+                <field name="change_date"/>
+                <field name="user_id"/>
+                <field name="standard_price"/>
+                <field name="list_price"/>
+                <button name="action_rollback" type="object" string="Rollback"
+                        help="Khôi phục lại giá từ phiên bản này"
+                        confirm="Bạn có chắc chắn muốn khôi phục lại giá từ phiên bản này không? Một bản ghi lịch sử mới sẽ được tạo cho hành động này."/>
+            </tree>
+        </field>
+    </record>
+
+    <!-- MỚI: Form View cho cửa sổ Lịch sử giá -->
+    <record id="view_product_price_history_form" model="ir.ui.view">
+        <field name="name">product.price.history.form</field>
+        <field name="model">product.price.history</field>
+        <field name="arch" type="xml">
+            <form string="Chi tiết lịch sử giá">
+                <sheet>
+                    <group>
+                        <field name="product_template_id"/>
+                        <field name="change_date"/>
+                        <field name="user_id"/>
+                        <field name="standard_price"/>
+                        <field name="list_price"/>
+                    </group>
+                </sheet>
+            </form>
+        </field>
+    </record>
+    <!-- MỚI: Form View cho Product Template -->
+    <record id="view_product_template_price_form" model="ir.ui.view">
+        <field name="name">product.template.price.form</field>
+        <field name="model">product.template</field>
+        <field name="inherit_id" ref="product.product_template_form_view"/>
+        <field name="arch" type="xml">
+            <xpath expr="//notebook" position="inside">
+                <page string="Lịch sử giá">
+                    <field name="history_ids" readonly="1">
+                        <tree>
+                            <field name="change_date"/>
+                            <field name="user_id"/>
+                            <field name="standard_price"/>
+                            <field name="list_price"/>
+                            <button name="action_rollback" type="object" string="Rollback"
+                                    help="Khôi phục lại giá từ phiên bản này"
+                                    confirm="Bạn có chắc chắn muốn khôi phục lại giá từ phiên bản này không? Một bản ghi lịch sử mới sẽ được tạo cho hành động này."/>
+                        </tree>
+                    </field>
+                </page>
+            </xpath>
+        </field>
+    </record>
+
+    <!-- Action Window (cập nhật) -->
+    <record id="action_product_price_manager" model="ir.actions.act_window">
+        <field name="name">Quản lý giá sản phẩm 1.2q</field>
+        <field name="res_model">product.template</field>
+        <field name="view_mode">tree,form</field>
+        <field name="view_ids" eval="[(5, 0, 0),
+            (0, 0, {'view_mode': 'tree', 'view_id': ref('view_product_price_tree')}),
+            (0, 0, {'view_mode': 'form', 'view_id': ref('view_product_template_price_form')})]"/>
+        <field name="search_view_id" ref="view_product_price_search"/>
+    </record>
+
+    <!-- Menu Item (không đổi) -->
+    <menuitem id="menu_product_price_manager"
+              name="Quản lý giá sản phẩm"
+              action="action_product_price_manager"/>
+</odoo>

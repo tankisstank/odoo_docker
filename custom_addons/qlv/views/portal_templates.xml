@@ -1,0 +1,27 @@
+<?xml version="1.0" encoding="utf-8" ?>
+<odoo>
+
+    <!-- Hide Odoo branding in Portal -->
+    <template id="brand_promotion_debrand" inherit_id="web.brand_promotion">
+        <xpath expr="//div[hasclass('o_brand_promotion')]" position="attributes">
+            <attribute name="class" separator=" " add="d-none"/>
+        </xpath>
+    </template>
+
+    <!-- Hide Odoo branding in Portal Sidebar -->
+    <template id="portal_record_sidebar_debrand" inherit_id="portal.portal_record_sidebar">
+        <xpath expr="//div[hasclass('card-footer')]" position="attributes">
+             <attribute name="class" separator=" " add="d-none"/>
+        </xpath>
+    </template>
+    
+    <!-- Hide "Powered by Odoo" in Login Page Footer -->
+    <template id="login_layout_debrand" inherit_id="web.login_layout">
+        <xpath expr="//div[hasclass('text-center')][hasclass('small')]" position="replace">
+            <div class="text-center mt-2 small text-muted">
+                <span t-esc="res_company.name"/>
+            </div>
+        </xpath>
+    </template>
+
+</odoo>

@@ -1,0 +1,27 @@
+<?xml version="1.0" encoding="UTF-8" ?>
+<odoo>
+    <!-- Remove "Create a free website with Odoo" in Website Footer -->
+    <template
+        id="layout_footer_copyright_debrand"
+        inherit_id="website.brand_promotion"
+        priority="20"
+    >
+        <xpath expr="//div[hasclass('o_brand_promotion')]" position="replace">
+            <div class="o_brand_promotion d-none" />
+        </xpath>
+    </template>
+
+    <!-- Customize Website Footer to show Company Info -->
+    <template id="footer_custom_gold_shop" inherit_id="website.layout">
+        <xpath expr="//div[@id='footer']" position="inside">
+             <!-- Ensure we have a copyright section if the theme doesn't provide a good one -->
+             <div class="container mt-3 mb-3 text-center text-muted">
+                 <small>
+                     <span t-field="res_company.name"/> <span t-esc="time.strftime('%Y')"/>. All rights reserved.
+                     <br/>
+                     <span t-field="res_company.street"/>, <span t-field="res_company.city"/>
+                 </small>
+             </div>
+        </xpath>
+    </template>
+</odoo>

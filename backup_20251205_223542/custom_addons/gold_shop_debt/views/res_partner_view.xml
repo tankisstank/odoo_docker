@@ -1,0 +1,34 @@
+<?xml version="1.0" encoding="utf-8"?>
+<odoo>
+    <record id="view_partner_form_gold_debt" model="ir.ui.view">
+        <field name="name">res.partner.form.gold.debt</field>
+        <field name="model">res.partner</field>
+        <field name="inherit_id" ref="base.view_partner_form"/>
+        <field name="arch" type="xml">
+            <xpath expr="//field[@name='category_id']" position="after">
+                <field name="is_gold_partner"/>
+            </xpath>
+            <div name="button_box" position="inside">
+                <button name="action_view_debt_details" type="object" class="oe_stat_button" icon="fa-money" attrs="{'invisible': [('is_gold_partner', '=', False)]}">
+                    <div class="o_stat_info">
+                        <field name="current_net_debt" widget="monetary" options="{'currency_field': 'currency_id'}"/>
+                        <span class="o_stat_text" attrs="{'invisible': [('current_net_debt', '&lt;', 0)]}">Receivable</span>
+                        <span class="o_stat_text" attrs="{'invisible': [('current_net_debt', '&gt;=', 0)]}">Payable</span>
+                    </div>
+                </button>
+            </div>
+        </field>
+    </record>
+    
+    <record id="view_partner_tree_gold_debt" model="ir.ui.view">
+        <field name="name">res.partner.tree.gold.debt</field>
+        <field name="model">res.partner</field>
+        <field name="inherit_id" ref="base.view_partner_tree"/>
+        <field name="arch" type="xml">
+             <field name="email" position="after">
+                <field name="current_net_debt" optional="show" sum="Total Debt"/>
+                <field name="is_gold_partner" optional="hide"/>
+            </field>
+        </field>
+    </record>
+</odoo>

@@ -1,0 +1,20 @@
+<?xml version="1.0" encoding="utf-8"?>
+<odoo>
+    <template id="report_saleorder_document_inherit_trade_in" inherit_id="sale.report_saleorder_document">
+        <!-- Add headers -->
+        <xpath expr="//table[hasclass('o_main_table')]/thead/tr/th[@name='th_priceunit']" position="before">
+            <th name="th_price_unit_base" class="text-end">Đơn giá gốc</th>
+            <th name="th_gold_purity" class="text-end">Tuổi vàng</th>
+        </xpath>
+
+        <!-- Add body cells -->
+        <xpath expr="//span[@t-field='line.price_unit']/../.." position="before">
+            <td name="td_price_unit_base" class="text-end">
+                <span t-field="line.price_unit_base"/>
+            </td>
+            <td name="td_gold_purity" class="text-end">
+                <span t-field="line.gold_purity"/>
+            </td>
+        </xpath>
+    </template>
+</odoo>

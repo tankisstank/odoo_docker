@@ -1,0 +1,28 @@
+﻿ODOO DOCKER BACKUP INFORMATION
+================================
+Backup Date: 2025-11-19 11:34:21
+Backup Path: .\backup_20251119_113354
+
+BACKUP CONTENTS:
+- docker-compose.yml: Docker Compose configuration
+- Dockerfile: Docker image configuration
+- custom_addons/: All custom modules (excluding __pycache__)
+- databases/: All databases backup (NEW FORMAT)
+  * globals.sql: Database roles and users
+  * databases_list.txt: List of all databases
+  * <database_name>.sql: Individual database dumps
+- database_backup.sql: Single database dump (OLD FORMAT, if exists)
+- odoo_data/: Filestore and sessions (if available)
+- Other config files: README, scripts, etc.
+
+RESTORE INSTRUCTIONS:
+1. Copy entire backup folder to new machine
+2. Edit docker-compose.yml if needed (volume paths)
+3. Restore all databases: .\restore_odoo.ps1 -BackupPath .\backup_folder
+   Or restore databases only: .\restore_database_only.ps1 -BackupPath .\backup_folder
+4. Start containers: docker compose up -d
+
+NOTES:
+- Ensure Docker and Docker Compose are installed
+- Check ports and volumes in docker-compose.yml
+- Default database password: odoo (should be changed in production)

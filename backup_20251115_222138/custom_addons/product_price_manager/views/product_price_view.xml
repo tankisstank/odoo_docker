@@ -1,0 +1,26 @@
+<odoo>
+    <record id="view_product_price_tree" model="ir.ui.view">
+        <field name="name">product.product.price.tree</field>
+        <field name="model">product.product</field>
+        <field name="arch" type="xml">
+            <tree editable="bottom">
+                <field name="display_name"/>
+                <field name="standard_price"/>
+                <field name="list_price"/>
+            </tree>
+        </field>
+    </record>
+
+    <record id="action_product_price_manager" model="ir.actions.act_window">
+        <field name="name">Quản lý giá sản phẩm</field>
+        <field name="res_model">product.product</field>
+        <field name="view_mode">tree,form</field>
+        <field name="view_id" ref="view_product_price_tree"/>
+        <field name="domain">[('product_tmpl_id.categ_id.name', 'ilike', 'Vàng')]</field>
+    </record>
+
+    <menuitem id="menu_product_price_manager"
+              name="Quản lý giá sản phẩm"
+              action="action_product_price_manager"/>
+</odoo>
+ 

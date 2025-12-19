@@ -1,0 +1,118 @@
+<odoo>
+    <!-- Tree View (VARIANTS) -->
+    <record id="view_product_product_price_tree" model="ir.ui.view">
+        <field name="name">product.product.price.tree</field>
+        <field name="model">product.product</field>
+        <field name="arch" type="xml">
+            <tree create="0" editable="bottom" multi_edit="1">
+                <button name="action_open_variant_details" type="object" icon="fa-external-link" title="Mở chi tiết sản phẩm" string="Xem chi tiết"/>
+                <field name="name" readonly="1"/>
+                <field name="product_template_variant_value_ids" widget="many2many_tags" string="Biến thể (Thuộc tính)" readonly="1" optional="show"/>
+                <field name="uom_id" string="Đơn vị"/>
+                <field name="gold_purity_standard" string="Tuổi Vàng (Chuẩn)" optional="show"/>
+                <field name="conversion_target_id" string="SP Quy đổi (Mặc định)" optional="show"/>
+                <field name="price_ratio" string="Tỷ lệ"/>
+                <field name="standard_price" string="Giá mua"/>
+                <field name="list_price" string="Giá bán"/>
+                <field name="sale_ok" string="Có thể bán"/>
+                <field name="purchase_ok" string="Có thể mua"/>
+                <field name="hidden" string="Ẩn sản phẩm"/>
+                <button name="action_view_price_history" type="object" icon="fa-history" title="Lịch sử giá" string="Xem lịch sử giá"/>
+            </tree>
+        </field>
+    </record>
+
+    <!-- Search View (VARIANTS) -->
+    <record id="view_product_product_price_search" model="ir.ui.view">
+        <field name="name">product.product.price.search</field>
+        <field name="model">product.product</field>
+        <field name="arch" type="xml">
+            <search string="Tìm kiếm sản phẩm">
+                <field name="name" string="Tên sản phẩm"/>
+                <field name="default_code" string="Mã sản phẩm"/>
+                <field name="categ_id" string="Danh mục" filter_domain="[('categ_id', 'child_of', self)]"/>
+                <filter string="Không ẩn" name="visible" domain="[('hidden', '=', False)]"/>
+                <filter string="Đã ẩn" name="hidden" domain="[('hidden', '=', True)]"/>
+            </search>
+        </field>
+    </record>
+
+    <!-- Graph View (History - shared) --> 
+    <!-- ... (Keep history views as is, they point to history model) ... -->
+
+    <!-- Action: All Products (VARIANTS) -->
+    <record id="action_product_price_manager" model="ir.actions.act_window">
+        <field name="name">Tất cả sản phẩm (Biến thể)</field>
+        <field name="res_model">product.product</field>
+        <field name="view_mode">tree,form</field>
+        <field name="domain">[]</field>
+        <field name="context">{'search_default_visible': 1}</field>
+        <field name="view_ids" eval="[(5, 0, 0),
+            (0, 0, {'view_mode': 'tree', 'view_id': ref('view_product_product_price_tree')}),
+            (0, 0, {'view_mode': 'form', 'view_id': ref('product.product_normal_form_view')})]"/>
+        <field name="search_view_id" ref="view_product_product_price_search"/>
+    </record>
+
+    <!-- Action: Gold Products (VARIANTS) -->
+    <record id="action_product_price_gold" model="ir.actions.act_window">
+        <field name="name">Sản phẩm Vàng (Biến thể)</field>
+        <field name="res_model">product.product</field>
+        <field name="view_mode">tree,form</field>
+        <field name="domain">[('categ_id.name', 'ilike', 'Vàng')]</field>
+        <field name="context">{'search_default_visible': 1}</field>
+        <field name="view_ids" eval="[(5, 0, 0),
+            (0, 0, {'view_mode': 'tree', 'view_id': ref('view_product_product_price_tree')}),
+            (0, 0, {'view_mode': 'form', 'view_id': ref('product.product_normal_form_view')})]"/>
+        <field name="search_view_id" ref="view_product_product_price_search"/>
+    </record>
+
+    <!-- Action: Currency Products (VARIANTS) -->
+    <record id="action_product_price_currency" model="ir.actions.act_window">
+        <field name="name">Sản phẩm Ngoại tệ (Biến thể)</field>
+        <field name="res_model">product.product</field>
+        <field name="view_mode">tree,form</field>
+        <field name="domain">[('categ_id.name', 'ilike', 'Ngoại tệ')]</field>
+        <field name="context">{'search_default_visible': 1}</field>
+        <field name="view_ids" eval="[(5, 0, 0),
+            (0, 0, {'view_mode': 'tree', 'view_id': ref('view_product_product_price_tree')}),
+            (0, 0, {'view_mode': 'form', 'view_id': ref('product.product_normal_form_view')})]"/>
+        <field name="search_view_id" ref="view_product_product_price_search"/>
+    </record>
+
+    <!-- Action: Create New Product -->
+    <record id="action_product_price_create" model="ir.actions.act_window">
+        <field name="name">Tạo sản phẩm mới</field>
+        <field name="res_model">product.template</field>
+        <field name="view_mode">form</field>
+        <field name="target">current</field>
+    </record>
+
+    <!-- Menus -->
+    <menuitem id="menu_product_price_root"
+              name="Quản lý giá"/>
+
+    <menuitem id="menu_product_price_manager"
+              name="Tất cả sản phẩm"
+              parent="menu_product_price_root"
+              action="action_product_price_manager"
+              sequence="10"/>
+
+    <menuitem id="menu_product_price_gold"
+              name="Sản phẩm Vàng"
+              parent="menu_product_price_root"
+              action="action_product_price_gold"
+              sequence="20"/>
+
+    <menuitem id="menu_product_price_currency"
+              name="Sản phẩm Ngoại tệ"
+              parent="menu_product_price_root"
+              action="action_product_price_currency"
+              sequence="30"/>
+
+    <menuitem id="menu_product_price_create"
+              name="Tạo sản phẩm mới"
+              parent="menu_product_price_root"
+              action="action_product_price_create"
+              sequence="40"/>
+
+</odoo>

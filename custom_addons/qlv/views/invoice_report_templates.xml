@@ -1,0 +1,21 @@
+<?xml version="1.0" encoding="utf-8"?>
+<odoo>
+    <template id="report_invoice_document_inherit_trade_in" inherit_id="account.report_invoice_document">
+        <!-- Add headers -->
+        <xpath expr="//table[@name='invoice_line_table']/thead/tr/th[@name='th_priceunit']" position="before">
+            <th name="th_price_unit_base" class="text-end">Đơn giá gốc</th>
+            <th name="th_gold_purity" class="text-end">Tuổi vàng</th>
+        </xpath>
+
+        <!-- Add body cells -->
+        <!-- Use class o_main_table to find the table, and t-field for price_unit to find the cell -->
+        <xpath expr="//span[@t-field='line.price_unit']/../.." position="before">
+             <td name="td_price_unit_base" class="text-end">
+                <span t-field="line.price_unit_base"/>
+            </td>
+            <td name="td_gold_purity" class="text-end">
+                <span t-field="line.gold_purity"/>
+            </td>
+        </xpath>
+    </template>
+</odoo>

@@ -1,0 +1,30 @@
+<?xml version="1.0" encoding="utf-8"?>
+<odoo>
+    <!-- Top Level Menu -->
+    <menuitem id="menu_gold_debt_root" name="Công nợ" sequence="20"/>
+
+    <!-- Sub Menus -->
+    <menuitem id="menu_gold_debt_partner" name="Đối tác Công nợ" parent="menu_gold_debt_root" sequence="10" action="base.action_partner_form"/>
+    
+    <menuitem id="menu_gold_debt_report" name="Báo cáo Công nợ" parent="menu_gold_debt_root" sequence="20" action="action_gold_debt_report_wizard"/>
+    
+    <menuitem id="menu_gold_debt_offset" name="Cấn trừ Công nợ" parent="menu_gold_debt_root" sequence="30" action="action_gold_debt_offset_wizard"/>
+
+    <!-- Filter for Partner Action to show only Gold Partners by default? -->
+    <!-- We can create a specific action for this -->
+    <record id="action_gold_partner_debt" model="ir.actions.act_window">
+        <field name="name">Đối tác Công nợ</field>
+        <field name="res_model">res.partner</field>
+        <field name="view_mode">tree,form</field>
+        <field name="domain">[('is_gold_partner', '=', True)]</field>
+        <field name="context">{'default_is_gold_partner': True}</field>
+    </record>
+    
+    <!-- Override menu item to use the new action -->
+    <menuitem id="menu_gold_debt_partner" name="Đối tác Công nợ" parent="menu_gold_debt_root" sequence="10" action="action_gold_partner_debt"/>
+
+    <!-- Configuration Menu -->
+    <menuitem id="menu_qlv_configuration" name="Cấu hình" parent="sale.sale_menu_root" sequence="100"/>
+    <menuitem id="menu_qlv_settings" name="Thiết lập Vàng" parent="menu_qlv_configuration" sequence="10" action="action_qlv_config_settings"/>
+
+</odoo>

@@ -1,0 +1,36 @@
+<odoo>
+    <template id="report_saleorder_document_trade_in" inherit_id="sale.report_saleorder_document">
+        <xpath expr="//div[@id='total']//table[1]" position="replace">
+            <table class="table table-sm o_main_table">
+                <tbody>
+                    <tr>
+                        <td>Untaxed Amount</td>
+                        <td class="text-end">
+                            <span t-field="doc.amount_untaxed"/>
+                        </td>
+                    </tr>
+                    <tr>
+                        <td>Taxes</td>
+                        <td class="text-end">
+                            <span t-field="doc.amount_tax"/>
+                        </td>
+                    </tr>
+                    <tr>
+                        <td>Total Trade-in</td>
+                        <td class="text-end">
+                            <span>
+                                (<span t-field="doc.trade_in_total" t-options="{'widget': 'monetary', 'display_currency': doc.currency_id}"/>)
+                            </span>
+                        </td>
+                    </tr>
+                    <tr class="o_main_total o_total_row">
+                        <td>Total</td>
+                        <td class="text-end">
+                            <span t-field="doc.amount_total"/>
+                        </td>
+                    </tr>
+                </tbody>
+            </table>
+        </xpath>
+    </template>
+</odoo>

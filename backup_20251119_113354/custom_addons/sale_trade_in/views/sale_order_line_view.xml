@@ -1,0 +1,37 @@
+<odoo>
+    <record id="view_order_form_trade_in" model="ir.ui.view">
+        <field name="name">sale.order.form.trade.in</field>
+        <field name="model">sale.order</field>
+        <field name="inherit_id" ref="sale.view_order_form"/>
+        <field name="arch" type="xml">
+            <!-- Thêm trường trade-in vào bảng sản phẩm -->
+            <xpath expr="//field[@name='order_line']/tree/field[@name='price_unit']" position="after">
+                <field name="is_trade_in" string="Trade-in Product"/>
+                <field name="trade_in_price_unit" string="Trade-in Price (Unit)" attrs="{'invisible': [('is_trade_in', '=', False)]}"/>
+            </xpath>
+            <!-- Thay thế phần hiển thị tổng để không còn dùng tax_totals (tính cả trade-in) -->
+            <xpath expr="//group[@name='sale_total']/field[@name='tax_totals']" position="replace">
+                <group colspan="2" class="oe_right">
+                    <group>
+                        <label for="amount_untaxed" string="Untaxed Amount"/>
+                        <div>
+                            <field name="amount_untaxed" readonly="1" widget="monetary"/>
+                        </div>
+                         <label for="trade_in_total" string="Total Trade-in"/>
+                        <div>
+                            <field name="trade_in_total" readonly="1" widget="monetary"/>
+                        </div>
+                        <label for="amount_total" string="Total"/>
+                        <div>
+                            <field name="amount_total" readonly="1" widget="monetary" class="oe_subtotal_footer_separator"/>
+                        </div>
+                        <label for="amount_tax" string="Taxes"/>
+                        <div>
+                            <field name="amount_tax" readonly="1" widget="monetary"/>
+                        </div>
+                    </group>
+                </group>
+            </xpath>
+        </field>
+    </record>
+</odoo> 

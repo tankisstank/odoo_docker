@@ -1,0 +1,28 @@
+<?xml version="1.0" encoding="utf-8"?>
+<odoo>
+    <data>
+        <record id="view_order_form_inherit_trade_in_combined_picking" model="ir.ui.view">
+            <field name="name">sale.order.form.inherit.trade_in.combined</field>
+            <field name="model">sale.order</field>
+            <field name="inherit_id" ref="sale_stock.view_order_form_inherit_sale_stock"/>
+            <field name="arch" type="xml">
+                <!-- Ẩn nút Delivery gốc -->
+                <xpath expr="//button[@name='action_view_delivery']" position="attributes">
+                    <attribute name="invisible">1</attribute>
+                </xpath>
+
+                <!-- Thêm nút "Transfers" mới vào ngay sau nút đã ẩn -->
+                <xpath expr="//button[@name='action_view_delivery']" position="after">
+                    <button type="object"
+                        name="action_view_combined_transfers"
+                        class="oe_stat_button"
+                        icon="fa-exchange"
+                        attrs="{'invisible': [('delivery_count', '=', 0)]}">
+                        <!-- Chúng ta vẫn dùng 'delivery_count' vì trường này đã đếm tổng số phiếu kho -->
+                        <field name="delivery_count" widget="statinfo" string="Giao Nhận"/>
+                    </button>
+                </xpath>
+            </field>
+        </record>
+    </data>
+</odoo>

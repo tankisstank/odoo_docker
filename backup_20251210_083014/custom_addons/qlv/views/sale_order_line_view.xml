@@ -1,0 +1,31 @@
+<?xml version="1.0" encoding="utf-8"?>
+<odoo>
+    <record id="view_order_form_trade_in" model="ir.ui.view">
+        <field name="name">sale.order.form.trade.in</field>
+        <field name="model">sale.order</field>
+        <field name="inherit_id" ref="sale.view_order_form"/>
+        <field name="arch" type="xml">
+
+            <xpath expr="//field[@name='order_line']/tree/field[@name='price_unit']" position="attributes">
+                <attribute name="string">Giá thực tế</attribute>
+                <attribute name="readonly">1</attribute>
+                <attribute name="force_save">1</attribute>
+                <attribute name="optional">hide</attribute>
+            </xpath>
+            <xpath expr="//field[@name='order_line']/tree/field[@name='price_unit']" position="before">
+                <field name="price_unit_base" string="Đơn giá"/>
+                <field name="is_trade_in" string="Sản phẩm mua vào"/>
+                <field name="gold_purity" string="Tuổi vàng" optional="show"/>
+                <field name="price_compensation" string="Bù giá" optional="show" force_save="1"/>
+            </xpath>
+
+            <!-- Thay thế phần hiển thị tổng để không còn dùng tax_totals (tính cả trade-in) -->
+            <!-- Restoration of Standard Totals -->
+            <xpath expr="//group[@name='sale_total']" position="replace">
+                <group colspan="2" class="oe_right" name="sale_total">
+                    <field name="tax_totals" widget="account-tax-totals-field" nolabel="1" colspan="2" readonly="1"/>
+                </group>
+            </xpath>
+        </field>
+    </record>
+</odoo>

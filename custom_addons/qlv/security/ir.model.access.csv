@@ -1,0 +1,6 @@
+id,name,model_id:id,group_id:id,perm_read,perm_write,perm_create,perm_unlink
+access_gold_debt_offset_wizard,gold.debt.offset.wizard,model_gold_debt_offset_wizard,base.group_user,1,1,1,1
+access_gold_debt_report_wizard,gold.debt.report.wizard,model_gold_debt_report_wizard,base.group_user,1,1,1,1
+access_product_price_history_user,product.price.history user,model_product_price_history,base.group_user,1,1,1,1
+access_pawn_order,pawn.order,model_pawn_order,base.group_user,1,1,1,1
+access_pawn_order_line,pawn.order.line,model_pawn_order_line,base.group_user,1,1,1,1

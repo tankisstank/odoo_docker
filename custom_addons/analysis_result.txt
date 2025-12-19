@@ -1,0 +1,7 @@
+------------------------------
+Picking Analysis for QTU/00049:
+Picking [12] WH/OUT/00008 - Type: outgoing - State: confirmed
+  - Move: Test Ring (Sell) | Qty: 1.0 | Loc: Tồn kho -> Customers
+Picking [13] WH/IN/00005 - Type: incoming - State: confirmed
+  - Move: Test Necklace (Buy) | Qty: 1.0 | Loc: Customers -> Tồn kho
+  - Move: Tiền Việt Nam (VNĐ) | Qty: 2000000.0 | Loc: Customers -> Tồn kho
