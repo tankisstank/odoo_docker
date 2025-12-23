@@ -19,9 +19,12 @@ class SaleOrder(models.Model):
                 # Check for bad lines
                 if cmd[0] == 0:
                      v = cmd[2]
-                     # Sanitize Input: Drop Ghost Lines
-                     if not v.get('name') and not v.get('product_id') and not v.get('display_type'):
-                         _logger.warning(f"QLV INFO: Dropped ghost/empty line at creation index {i}")
+                     # Strict Sanitize: If not a Note/Section, it MUST have a Product.
+                     is_section_or_note = v.get('display_type')
+                     has_product = v.get('product_id')
+                     
+                     if not is_section_or_note and not has_product:
+                         _logger.warning(f"QLV INFO: Dropped invalid line (No Product) at creation index {i}")
                          continue 
                 clean_lines.append(cmd)
             vals['order_line'] = clean_lines
@@ -60,10 +63,14 @@ class SaleOrder(models.Model):
                 # operation 0 = Create
                 if cmd[0] == 0:
                     vals = cmd[2]
-                    # Check if essentially empty (No name, no product, no display_type)
-                    has_content = vals.get('name') or vals.get('product_id') or vals.get('display_type')
-                    if not has_content:
-                        continue # Skip this ghost line
+                    # Strict Sanitize: If not a Note/Section, it MUST have a Product.
+                    # Otherwise, it's a "ghost" line (e.g. user typed search text "4 số" but didn't pick product).
+                    is_section_or_note = vals.get('display_type')
+                    has_product = vals.get('product_id')
+                    
+                    if not is_section_or_note and not has_product:
+                         _logger.warning(f"QLV INFO: Dropped invalid line (No Product) in write: {vals}")
+                         continue # Skip this invalid line
                 clean_lines.append(cmd)
             values['order_line'] = clean_lines
 
@@ -215,6 +222,132 @@ class SaleOrder(models.Model):
             else:
                 # Confirmed but no picking done yet
                 order.custom_state = 'sale'
+
+    # === PHASE 15: LEGACY TRANSACTION LOGIC ===
+    
+    legacy_type = fields.Selection([
+        ('nhap', 'Đơn Nhập'),
+        ('xuat', 'Đơn Xuất'),
+        ('hdkb', 'HĐKB'), # Hợp đồng Khách Bán
+        ('hdkm', 'HĐKM'), # Hợp đồng Khách Mua
+        ('mixed', 'Hỗn hợp'),
+    ], string='Loại Phiếu (Legacy)', compute='_compute_legacy_type', store=True)
+
+    legacy_transaction_status = fields.Selection([
+        ('none', '-'),
+        ('khach_no', 'Khách Nợ'),
+        ('khach_gui', 'Khách Gửi / Dư'),
+        ('can_bang', 'Cân bằng'),
+    ], string='Trạng thái Nợ (Legacy)', compute='_compute_legacy_transaction_status', store=True)
+    
+    @api.depends('order_line', 'order_line.price_subtotal', 'order_line.is_trade_in', 'state')
+    def _compute_legacy_type(self):
+        for order in self:
+            # 1. Calculate Dominant Value
+            # Sell Value (is_trade_in=False)
+            # REVERT: Only exclude strictly Auto-Balance lines. Manual Money lines (Trading Currency) ARE valid goods.
+            sell_lines = order.order_line.filtered(lambda l: not l.is_trade_in and not l.is_auto_balance and not l.display_type)
+            buy_lines = order.order_line.filtered(lambda l: l.is_trade_in and not l.is_auto_balance and not l.display_type)
+            
+            # Use count if values are zero (e.g. new lines with no price yet)
+            total_sell = sum(sell_lines.mapped('price_subtotal'))
+            total_buy = sum(l.price_subtotal for l in buy_lines)
+            
+            total_buy_abs = abs(total_buy)
+            
+            # Determine Dominant Side
+            # If values distinct, use value. If values both 0, use line count.
+            if total_sell == 0 and total_buy_abs == 0:
+                 is_sell_dominant = len(sell_lines) >= len(buy_lines)
+            else:
+                 is_sell_dominant = total_sell >= total_buy_abs
+            
+            # 2. Determine Prefix based on State
+            if order.state in ('draft', 'sent', 'cancel'):
+                # Quote Stage
+                if not sell_lines and not buy_lines:
+                    order.legacy_type = False
+                elif is_sell_dominant:
+                    order.legacy_type = 'nhap' # Khách mua hàng -> Shop Nhập yêu cầu? No, User said: Sell -> Nhập (Khách thiếu)
+                else:
+                    order.legacy_type = 'xuat' # Khách bán hàng -> Shop Xuất tiền? User said: Buy -> Xuất (Khách dư)
+            else:
+                # Contract Stage (sale, done)
+                if not sell_lines and not buy_lines:
+                    order.legacy_type = False
+                elif is_sell_dominant:
+                    order.legacy_type = 'hdkb' # Hợp đồng Khách Bán (Khách mua của mình) -> Terminology "Khách Bán" is confusing but User insisted: "Dòng hàng bán -> HĐKB"
+                else:
+                    order.legacy_type = 'hdkm' # Hợp đồng Khách Mua (Mình mua của khách) -> Terminology "HĐKM"
+
+    @api.depends('order_line.qty_delivered', 'order_line.price_subtotal', 'amount_total', 'state')
+    def _compute_legacy_transaction_status(self):
+        """
+        Khách Nợ: Giá trị Hàng Giao (Delivered Sell) > Giá trị Đã Nhận (Trade-in + Payment)
+        Khách Gửi: Giá trị Đã Nhận > Giá trị Hàng Giao
+        """
+        for order in self:
+            # Modified: Allow Draft state to show Projected Status
+            # if order.state not in ('sale', 'done'):
+            #    order.legacy_transaction_status = 'none'
+            #    continue
+                
+            # 1. Total Value of Goods DELIVERED (Shop gave to Customer)
+            # Only count Sell lines.
+            sell_lines = order.order_line.filtered(lambda l: not l.is_trade_in and not l.display_type and not l.is_auto_balance)
+            
+            if order.state in ('draft', 'sent'):
+                # Use Ordered Qty for projection
+                value_delivered = sum(l.price_unit * l.product_uom_qty for l in sell_lines)
+            else:
+                # Use Delivered Qty for actual
+                value_delivered = sum(l.price_unit * l.qty_delivered for l in sell_lines)
+            
+            # 2. Total Value RECEIVED (Shop received from Customer)
+            # A. Trade-in Lines (Goods received)
+            buy_lines = order.order_line.filtered(lambda l: l.is_trade_in and not l.display_type and not l.is_auto_balance)
+            
+            if order.state in ('draft', 'sent'):
+                 value_received_goods = sum(abs(l.price_unit) * l.product_uom_qty for l in buy_lines)
+            else:
+                 value_received_goods = sum(abs(l.price_unit) * l.qty_delivered for l in buy_lines)
+
+            # B. Money Received/Paid
+            money_lines = order.order_line.filtered(lambda l: l.product_id.categ_id.name in ['Tiền', 'Money', 'Ngoại tệ'] or l.is_auto_balance)
+            value_received_money = 0.0
+            value_paid_money = 0.0
+            
+            for m in money_lines:
+                # Money is always considered "delivered/received" based on Order Qty 
+                # (assuming instant exchange, no stock picking for money usually)
+                qty = m.product_uom_qty
+                
+                if m.is_trade_in:
+                    # Thu tiền về (Received)
+                    value_received_money += abs(m.price_unit) * qty
+                else:
+                    # Chi tiền ra (Paid)
+                    value_paid_money += abs(m.price_unit) * qty
+
+            # Total IN vs OUT
+            # IN (Shop received) = Goods Buy + Money Buy (Thu)
+            # OUT (Shop gave) = Goods Sell + Money Sell (Chi)
+            
+            total_shop_gave = value_delivered + value_paid_money
+            total_shop_received = value_received_goods + value_received_money
+            
+            balance = total_shop_received - total_shop_gave
+            
+            # Formatting
+            if abs(balance) < 1000: # Tolerance
+                order.legacy_transaction_status = 'can_bang'
+            elif balance < 0:
+                # Shop gave > Shop received -> Customer owes -> "Khách Nợ"
+                order.legacy_transaction_status = 'khach_no'
+            else:
+                # Shop received > Shop gave -> Customer holds credit -> "Khách Gửi"
+                order.legacy_transaction_status = 'khach_gui'
+
 
     def _check_auto_invoice(self):
         """

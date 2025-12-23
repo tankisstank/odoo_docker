@@ -22,6 +22,12 @@
                 <xpath expr="//field[@name='partner_id']" position="attributes">
                      <attribute name="attrs">{'readonly': ['|', '|', ('state', 'in', ['done', 'cancel']), ('custom_state', '=', 'invoiced'), ('custom_state', '=', 'done_delivery')]}</attribute>
                 </xpath>
+                
+                <xpath expr="//field[@name='partner_id']" position="after">
+                    <field name="legacy_type" widget="badge" decoration-info="legacy_type == 'nhap'" decoration-warning="legacy_type == 'xuat'" decoration-success="legacy_type == 'hdkb'" decoration-primary="legacy_type == 'hdkm'"/>
+                    <field name="legacy_transaction_status" widget="badge" decoration-danger="legacy_transaction_status == 'khach_no'" decoration-warning="legacy_transaction_status == 'khach_gui'" decoration-success="legacy_transaction_status == 'can_bang'"/>
+                </xpath>
+
                 <xpath expr="//field[@name='order_line']" position="attributes">
                      <attribute name="attrs">{'readonly': ['|', '|', ('state', 'in', ['done', 'cancel']), ('custom_state', '=', 'invoiced'), ('custom_state', '=', 'done_delivery')]}</attribute>
                 </xpath>
@@ -103,6 +109,8 @@
                     <field name="summary_goods_out" string="Hàng Xuất" optional="show"/>
                     <field name="money_total_in" string="Tiền Nhập" optional="show" decoration-danger="1" sum="Tổng Tiền Nhập"/>
                     <field name="money_total_out" string="Tiền Xuất" optional="show" decoration-danger="1" sum="Tổng Tiền Xuất"/>
+                    <field name="legacy_type" string="Loại (Legacy)" widget="badge" decoration-info="legacy_type == 'nhap'" decoration-warning="legacy_type == 'xuat'" decoration-success="legacy_type == 'hdkb'" decoration-primary="legacy_type == 'hdkm'" optional="show"/>
+                    <field name="legacy_transaction_status" string="Nợ (Legacy)" widget="badge" decoration-danger="legacy_transaction_status == 'khach_no'" decoration-warning="legacy_transaction_status == 'khach_gui'" decoration-success="legacy_transaction_status == 'can_bang'" optional="show"/>
                 </field>
                 <field name="date_order" position="attributes">
                     <attribute name="string">Thời gian</attribute>
@@ -143,6 +151,63 @@
                     <attribute name="optional">hide</attribute>
                 </field>
                  <field name="expected_date" position="attributes">
+                    <attribute name="optional">hide</attribute>
+                </field>
+            </field>
+        </record>
+
+
+        <record id="view_quotation_tree_trade_in_custom" model="ir.ui.view">
+            <field name="name">sale.quotation.tree.trade.in.custom</field>
+            <field name="model">sale.order</field>
+            <field name="inherit_id" ref="sale.view_quotation_tree"/>
+            <field name="arch" type="xml">
+                <tree position="attributes">
+                    <attribute name="decoration-warning">invoice_status == 'invoiced'</attribute>
+                </tree>
+                <field name="name" position="attributes">
+                    <attribute name="string">Mã GD</attribute>
+                </field>
+                <field name="partner_id" position="attributes">
+                    <attribute name="string">Bạn hàng</attribute>
+                </field>
+                <field name="partner_id" position="after">
+                    <field name="note" string="Ghi chú" optional="show"/>
+                    <field name="summary_goods_in" string="Hàng Nhập" optional="show"/>
+                    <field name="summary_goods_out" string="Hàng Xuất" optional="show"/>
+                    <field name="money_total_in" string="Tiền Nhập" optional="show" decoration-danger="1" sum="Tổng Tiền Nhập"/>
+                    <field name="money_total_out" string="Tiền Xuất" optional="show" decoration-danger="1" sum="Tổng Tiền Xuất"/>
+                    <field name="legacy_type" string="Loại (Legacy)" widget="badge" decoration-info="legacy_type == 'nhap'" decoration-warning="legacy_type == 'xuat'" decoration-success="legacy_type == 'hdkb'" decoration-primary="legacy_type == 'hdkm'" optional="show"/>
+                    <field name="legacy_transaction_status" string="Nợ (Legacy)" widget="badge" decoration-danger="legacy_transaction_status == 'khach_no'" decoration-warning="legacy_transaction_status == 'khach_gui'" decoration-success="legacy_transaction_status == 'can_bang'" optional="show"/>
+                </field>
+                <field name="create_date" position="attributes">
+                     <attribute name="string">Thời gian tạo</attribute>
+                     <attribute name="optional">show</attribute>
+                     <attribute name="widget">datetime</attribute>
+                </field>
+                 <field name="state" position="replace">
+                    <field name="custom_state" string="Tình trạng" 
+                        decoration-success="custom_state == 'done_delivery'" 
+                        decoration-info="custom_state == 'partial'" 
+                        decoration-muted="custom_state == 'invoiced'"
+                        widget="badge"/>
+                    <field name="state" invisible="1"/>
+                </field>
+                
+                 <!-- Optimize columns for Quotation View -->
+                <field name="user_id" position="attributes">
+                    <attribute name="optional">hide</attribute>
+                </field>
+                <field name="team_id" position="attributes">
+                    <attribute name="optional">hide</attribute>
+                </field>
+                <field name="company_id" position="attributes">
+                     <attribute name="optional">hide</attribute>
+                </field>
+                 <field name="amount_total" position="attributes">
+                    <attribute name="optional">hide</attribute>
+                </field>
+                 <field name="activity_ids" position="attributes">
                     <attribute name="optional">hide</attribute>
                 </field>
             </field>
