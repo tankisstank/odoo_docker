@@ -6,42 +6,116 @@
         <field name="inherit_id" ref="sale.view_order_form"/>
         <field name="arch" type="xml">
 
-            <!-- Insert Input/Conversion Fields BEFORE the Target Product -->
-            <xpath expr="//field[@name='order_line']/tree/field[@name='product_id']" position="before">
-                <field name="state" invisible="1"/>
-                <field name="is_trade_in" string="Thu mua" readonly="1" force_save="1" optional="hide"/>
-                <field name="original_product_id" string="Tên" optional="show"/>
-                <field name="original_weight" string="TTL" optional="show"/>
-                <field name="loss_weight" string="Hao" optional="hide"/>
-                <field name="gold_purity" string="Tuổi" optional="show"/>
-                <field name="exchange_rate" string="Giá QĐ" optional="hide"/>
+            <!-- 1. Define tabs for Sales and Trade-in -->
+            <xpath expr="//page[@name='order_lines']/field[@name='order_line']" position="replace">
+                <notebook>
+                    <!-- TAB 1: Bán hàng (Sales) -->
+                    <page string="Bán hàng" name="sell_lines_tab">
+                        <field name="order_line_sell" context="{'default_is_trade_in': False}" mode="tree" widget="section_and_note_one2many">
+                            <tree string="Chi tiết Bán hàng" editable="bottom" decoration-info="(not display_type and invoice_status == 'to invoice')">
+                                <control>
+                                    <create name="add_product_control" string="Thêm sản phẩm"/>
+                                    <create name="add_section_control" string="Thêm nhóm" context="{'default_display_type': 'line_section'}"/>
+                                    <create name="add_note_control" string="Thêm ghi chú" context="{'default_display_type': 'line_note'}"/>
+                                </control>
+                                <field name="sequence" widget="handle"/>
+                                <field name="display_type" invisible="1"/>
+                                <field name="product_uom_category_id" invisible="1"/>
+                                <field name="product_type" invisible="1"/>
+                                <field name="product_updatable" invisible="1"/>
+                                <field name="is_downpayment" invisible="1"/>
+                                <field name="invoice_status" invisible="1"/>
+                                <field name="state" invisible="1"/>
+                                <field name="company_id" invisible="1"/>
+                                <field name="currency_id" invisible="1" optional="hide"/>
+                                <field name="qty_delivered" invisible="1" optional="hide"/>
+                                <field name="is_auto_balance" invisible="1" optional="hide"/>
+                                <field name="original_uom_id" invisible="1" optional="hide"/>
+                                
+                                <field name="is_trade_in" column_invisible="True" optional="hide"/>
+                                
+                                <field name="original_product_id" string="Hàng gốc" optional="show"/>
+                                <field name="original_weight" string="TTL" optional="show"/>
+                                <field name="loss_weight" string="Hao" optional="hide"/>
+                                <field name="gold_purity" string="Tuổi" optional="show"/>
+                                <field name="exchange_rate" string="Giá QĐ" optional="hide"/>
+                                
+                                <field name="product_id" string="Quy đổi" optional="show"
+                                    domain="['|', ('sale_ok', '=', True), ('purchase_ok', '=', True)]"/>
+                                <field name="product_template_id" string="Sản phẩm Template" optional="hide"/>
+                                <field name="name" string="Mô tả" optional="show" widget="section_and_note_text"/>
+                                
+                                <field name="product_uom_qty" string="TTL Quy đổi" decoration-bf="1" context="{'partner_id': parent.partner_id, 'quantity': product_uom_qty, 'pricelist': parent.pricelist_id, 'uom': product_uom, 'company_id': parent.company_id}"/>
+                                <field name="product_uom" invisible="1"/>
+                                
+                                <field name="price_unit_base" string="Giá gốc" optional="hide"/>
+                                <field name="price_compensation" string="Bù giá" optional="show" force_save="1"/>
+                                <field name="price_unit" string="Thành tiền (Đơn vị)" force_save="1" optional="show"/>
+                                
+                                <field name="tax_id" widget="many2many_tags" options="{'no_create': True}" optional="hide"/>
+                                <field name="discount" string="CK (%)" optional="hide" widget="product_discount"/>
+                                <field name="price_subtotal" widget="monetary"/>
+                            </tree>
+                        </field>
+                    </page>
+
+                    <!-- TAB 2: Mua hàng (Trade-in) -->
+                    <page string="Mua hàng (Thu đổi)" name="trade_in_lines_tab">
+                         <field name="order_line_trade_in" context="{'default_is_trade_in': True}" mode="tree" widget="section_and_note_one2many">
+                            <tree string="Chi tiết Mua hàng" editable="bottom" decoration-info="(not display_type and invoice_status == 'to invoice')">
+                                <control>
+                                    <create name="add_product_control" string="Thêm hàng cũ"/>
+                                    <create name="add_section_control" string="Thêm nhóm" context="{'default_display_type': 'line_section'}"/>
+                                    <create name="add_note_control" string="Thêm ghi chú" context="{'default_display_type': 'line_note'}"/>
+                                </control>
+                                <field name="sequence" widget="handle"/>
+                                <field name="display_type" invisible="1"/>
+                                <field name="product_uom_category_id" invisible="1"/>
+                                <field name="product_type" invisible="1"/>
+                                <field name="product_updatable" invisible="1"/>
+                                <field name="is_downpayment" invisible="1"/>
+                                <field name="invoice_status" invisible="1"/>
+                                <field name="state" invisible="1"/>
+                                <field name="company_id" invisible="1"/>
+                                <field name="currency_id" invisible="1"/>
+                                <field name="qty_delivered" invisible="1"/>
+                                <field name="is_auto_balance" invisible="1"/>
+                                <field name="original_uom_id" invisible="1"/>
+                                
+                                <field name="is_trade_in" column_invisible="True" optional="hide"/>
+
+                                <field name="original_product_id" string="Hàng gốc" optional="show"/>
+                                <field name="original_weight" string="TTL" optional="show"/>
+                                <field name="loss_weight" string="Hao" optional="hide"/>
+                                <field name="gold_purity" string="Tuổi" optional="show"/>
+                                <field name="exchange_rate" string="Giá QĐ" optional="hide"/>
+                                
+                                <field name="product_id" string="Quy đổi" optional="show"
+                                    domain="['|', ('sale_ok', '=', True), ('purchase_ok', '=', True)]"/>
+                                <field name="product_template_id" string="Sản phẩm Template" optional="hide"/>
+                                <field name="name" string="Mô tả" optional="show" widget="section_and_note_text"/>
+
+                                <field name="product_uom_qty" string="TTL Quy đổi" decoration-bf="1" context="{'partner_id': parent.partner_id, 'quantity': product_uom_qty, 'pricelist': parent.pricelist_id, 'uom': product_uom, 'company_id': parent.company_id}"/>
+                                <field name="product_uom" invisible="1"/>
+
+                                <field name="price_unit_base" string="Giá gốc" optional="hide"/>
+                                <field name="price_compensation" string="Bù giá" optional="show" force_save="1"/>
+                                <field name="price_unit" string="Thành tiền (Đơn vị)" force_save="1" optional="show"/>
+
+                                <field name="tax_id" widget="many2many_tags" options="{'no_create': True}" optional="hide"/>
+                                <field name="discount" string="CK (%)" optional="hide" widget="product_discount"/>
+                                <field name="price_subtotal" widget="monetary"/>
+                            </tree>
+                        </field>
+                    </page>
+                    
+                     <!-- Hidden Original Field to Ensure Computation and Backend Logic Persists -->
+                     <page string="Tất cả (Ẩn)" name="all_lines_hidden" invisible="1">
+                         <field name="order_line"/>
+                     </page>
+                </notebook>
             </xpath>
 
-            <!-- Rename Quantity to reflect conversion result -->
-            <xpath expr="//field[@name='order_line']/tree/field[@name='product_uom_qty']" position="attributes">
-                 <attribute name="string">SL/TL Quy đổi</attribute>
-                 <attribute name="decoration-bf">1</attribute>
-            </xpath>
-
-            <!-- Price & Compensation -->
-            <xpath expr="//field[@name='order_line']/tree/field[@name='price_unit']" position="before">
-                <field name="price_unit_base" string="Giá gốc" optional="hide"/>
-                <field name="price_compensation" string="Bù giá" optional="show" force_save="1"/>
-            </xpath>
-
-            <xpath expr="//field[@name='order_line']/tree/field[@name='price_unit']" position="attributes">
-                <attribute name="string">Thành tiền (Đơn vị)</attribute>
-                <attribute name="force_save">1</attribute>
-                <attribute name="optional">show</attribute>
-            </xpath>
-
-            <!-- Thay thế phần hiển thị tổng để không còn dùng tax_totals (tính cả trade-in) -->
-            <!-- Restoration of Standard Totals -->
-            <xpath expr="//group[@name='sale_total']" position="replace">
-                <group colspan="2" class="oe_right" name="sale_total">
-                    <field name="tax_totals" widget="account-tax-totals-field" nolabel="1" colspan="2" readonly="1"/>
-                </group>
-            </xpath>
         </field>
     </record>
 </odoo>

@@ -44,28 +44,9 @@
                     <field name="auto_balance_money"/>
                 </xpath>
                 
-                <xpath expr="//field[@name='order_line']/tree/control" position="replace">
-                    <control>
-                        <create name="add_sell_control" string="Thêm hàng bán" context="{'default_is_trade_in': False, 'default_sequence': 10}"/>
-                        <create name="add_buy_control" string="Thêm hàng mua" context="{'default_is_trade_in': True, 'default_sequence': 110}"/>
-                        <create name="add_section_control" string="Thêm tiêu đề" context="{'default_display_type': 'line_section'}"/>
-                        <create name="add_note_control" string="Thêm ghi chú" context="{'default_display_type': 'line_note'}"/>
-                    </control>
-                </xpath>
-                <xpath expr="//field[@name='order_line']/tree" position="attributes">
-                    <attribute name="decoration-success">is_auto_balance == True</attribute>
-                    <attribute name="decoration-danger">qty_delivered &lt; product_uom_qty and parent.state in ('sale', 'done') and not is_trade_in</attribute>
-                    <attribute name="decoration-warning">qty_delivered &lt; product_uom_qty and parent.state in ('sale', 'done') and is_trade_in</attribute>
-                    <attribute name="decoration-bf">is_auto_balance == True</attribute>
-                    <attribute name="default_order">sequence, id</attribute>
-                </xpath>
-                <xpath expr="//field[@name='order_line']/tree/field[@name='name']" position="before">
-                    <field name="state" invisible="1"/>
-                    <field name="sequence" widget="handle"/>
-                </xpath>
-                <xpath expr="//field[@name='order_line']/tree/field[@name='name']" position="after">
-                    <field name="is_auto_balance" invisible="1" force_save="1"/>
-                </xpath>
+                
+
+
 
                 <xpath expr="//notebook" position="after">
                     <separator string="Đơn hàng chưa hoàn thành" style="background-color: lightgrey;"   />

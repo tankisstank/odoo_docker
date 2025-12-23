@@ -43,7 +43,7 @@
     'assets': {
         'web.assets_backend': [
             'qlv/static/src/js/web_client_patch.js',
-            'qlv/static/src/js/force_sort_patch.js',
+            # 'qlv/static/src/js/force_sort_patch.js',
         ],
     },
     'installable': True,

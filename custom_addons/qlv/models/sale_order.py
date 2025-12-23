@@ -1,12 +1,38 @@
 from odoo import models, fields, api, _
 from odoo.exceptions import UserError
 from odoo.tools.safe_eval import safe_eval
+import logging
+
+_logger = logging.getLogger(__name__)
 
 
 class SaleOrder(models.Model):
     _inherit = 'sale.order'
 
+    @api.model
+    def create(self, vals):
+        if 'order_line' in vals:
+            # _logger.info("QLV DEBUG CREATE: Checking Order Lines...")
+            clean_lines = []
+            for i, cmd in enumerate(vals['order_line']):
+                # _logger.info(f"QLV DEBUG CREATE Line {i}: {cmd}")
+                # Check for bad lines
+                if cmd[0] == 0:
+                     v = cmd[2]
+                     # Sanitize Input: Drop Ghost Lines
+                     if not v.get('name') and not v.get('product_id') and not v.get('display_type'):
+                         _logger.warning(f"QLV INFO: Dropped ghost/empty line at creation index {i}")
+                         continue 
+                clean_lines.append(cmd)
+            vals['order_line'] = clean_lines
+
+        return super(SaleOrder, self).create(vals)
+
     def write(self, values):
+        if 'order_line' in values:
+             _logger.info("QLV DEBUG WRITE: Checking Order Lines...")
+             for i, cmd in enumerate(values['order_line']):
+                 _logger.info(f"QLV DEBUG WRITE Line {i}: {cmd}")
         # 1. Check Locking Condition
         # If order is formally "Done" (Invoiced or Delivered), block critical edits.
         # Allow system updates (e.g. from stock moves) or whitelist fields if needed.
@@ -24,6 +50,23 @@ class SaleOrder(models.Model):
                 if any(f in values for f in critical_fields):
                      raise UserError(_("Đơn hàng đã hoàn tất (Đã xuất hàng/hóa đơn). Không thể chỉnh sửa! Vui lòng Hủy đơn hàng để làm lại."))
         
+        # 2. SANITIZE INPUT: Drop "Ghost" lines (Empty lines) preventing "Missing Description" error.
+        # When clicking Confirm, Odoo saves edits. If an empty line exists, it sends (0, 0, {}) or similar.
+        # We must filter these out before they hit DB validation.
+        if 'order_line' in values:
+            clean_lines = []
+            for cmd in values['order_line']:
+                # cmd format: [operation, id, vals]
+                # operation 0 = Create
+                if cmd[0] == 0:
+                    vals = cmd[2]
+                    # Check if essentially empty (No name, no product, no display_type)
+                    has_content = vals.get('name') or vals.get('product_id') or vals.get('display_type')
+                    if not has_content:
+                        continue # Skip this ghost line
+                clean_lines.append(cmd)
+            values['order_line'] = clean_lines
+
         return super(SaleOrder, self).write(values)
 
     def action_super_cancel(self):
@@ -96,8 +139,24 @@ class SaleOrder(models.Model):
     summary_goods_in = fields.Char('Hàng Nhập', compute='_compute_custom_list_view_summary', store=True)
     summary_goods_out = fields.Char('Hàng Xuất', compute='_compute_custom_list_view_summary', store=True)
     money_total_in = fields.Monetary('Tiền Nhập', compute='_compute_custom_list_view_summary', store=True, currency_field='currency_id')
-    money_total_in = fields.Monetary('Tiền Nhập', compute='_compute_custom_list_view_summary', store=True, currency_field='currency_id')
     money_total_out = fields.Monetary('Tiền Xuất', compute='_compute_custom_list_view_summary', store=True, currency_field='currency_id')
+
+    # === Separate Tabs for Sales & Trade-in ===
+    # These fields provide a filtered view of 'order_line' for easier management.
+    # Note: Editing these fields will update 'order_line' due to the shared inverse 'order_id'.
+    order_line_sell = fields.One2many(
+        'sale.order.line', 'order_id', 
+        string='Chi tiết Bán hàng',
+        domain=[('is_trade_in', '=', False)],
+        help="Dòng hàng Bán (Doanh thu)."
+    )
+    order_line_trade_in = fields.One2many(
+        'sale.order.line', 'order_id', 
+        string='Chi tiết Mua hàng',
+        domain=[('is_trade_in', '=', True)],
+        context={'default_is_trade_in': True},
+        help="Dòng hàng Mua vào (Cầm đồ/Đổi hàng)."
+    )
 
     custom_state = fields.Selection([
         ('draft', 'Đang lập phiếu'), # Was Báo giá/Draft
@@ -108,6 +167,20 @@ class SaleOrder(models.Model):
         ('invoiced', 'Đã giao dịch'), # Was Đã xuất hóa đơn -> Unified concept 'Đã giao dịch' or 'Xong'? User said 'invoiced' -> 'Đã giao dịch'.
         ('cancel', 'Đã hủy'),
     ], string='Tình trạng', compute='_compute_custom_state', store=True)
+
+    trade_in_total = fields.Monetary(string='Tổng tiền Thu mua', compute='_compute_trade_in_total', store=True)
+
+    @api.depends('order_line.price_subtotal', 'order_line.is_trade_in')
+    def _compute_trade_in_total(self):
+        for order in self:
+            # Sum of all lines where is_trade_in is True
+            # Note: price_subtotal for trade-in is typically negative in our current logic.
+            # But the report might want to show the absolute value or the net effect.
+            # Let's check how price_subtotal is stored.
+            # In Models, we set price_unit to negative. So price_subtotal is negative.
+            # The report likely wants to show positive absolute value for "Trade-in Total".
+            total = sum(l.price_subtotal for l in order.order_line if l.is_trade_in and not l.display_type)
+            order.trade_in_total = abs(total)
 
     @api.depends('state', 'picking_ids.state', 'invoice_status', 'invoice_ids.state')
     def _compute_custom_state(self):
@@ -224,183 +297,163 @@ class SaleOrder(models.Model):
             order.money_total_in = val_in
             order.money_total_out = val_out
 
-    @api.onchange('order_line', 'auto_balance_money')
+    @api.onchange('order_line', 'order_line_sell', 'order_line_trade_in', 'auto_balance_money')
     def _onchange_balance_money(self):
         """
-        Tự động tính toán dòng tiền và sắp xếp đợn hàng.
-        Quy tắc sắp xếp:
-        - Hàng Bán: Sequence 0 (Header), Item 1-99
-        - Hàng Mua: Sequence 100 (Header), Item 101-9997
-        - Tiền Tự động: Sequence 9998 (Header), Item 9999
+        Tự động tính toán dòng tiền cân bằng (Fix Phase 13 Issue).
+        Logic cập nhật để xử lý: 
+        1. Zombie Lines (Dòng đã xóa bị hiện lại).
+        2. Stale Money (Tiền không cập nhật khi xóa).
+        3. Duplicate Key / Wrong Calc: Loại bỏ dòng tiền ra khỏi danh sách Hàng hóa.
+        
+        Giải pháp: 
+        - Source of Truth: Tab Bán/Mua (đã lọc bỏ dòng tiền).
+        - Tính toán: Chỉ sum hằng số Goods.
+        - Master Sync: Reconstruct lại list = Goods + 1 Money Line.
         """
         if not self.auto_balance_money:
             return
 
         company = self.company_id or self.env.company
         money_product = company.money_product_id
-        
-        # --- 1. Identify Components from Current Lines ---
-        current_lines = self.order_line
-        
-        sell_section = False
-        buy_section = False
-        money_section = False
-        
-        sell_lines = []
-        buy_lines = []
-        money_lines = []
-        other_lines = [] # Notes/Other Sections
-
-        # Helper to check if a line is a specific section
-        def is_section(l, name):
-            return l.display_type == 'line_section' and l.name == name
-
-        # Filter Loop
-        for line in current_lines:
-            # Check for specific Headers
-            if is_section(line, 'Hàng Bán (Xuất)'):
-                sell_section = line
-                continue
-            if is_section(line, 'Hàng Mua (Nhập)'):
-                buy_section = line
-                continue
-            if is_section(line, 'Tiền Tự động'):
-                money_section = line
-                continue
-
-
-            # Money Line Identification
-            # CRITICAL: Distinguish between "Manual Money" (User entered) and "Auto Balance" (System generated).
-            # "Manual Money" (e.g. Customer gives 1M VND) should be treated as "Goods/Trade-in" and visible.
-            # "Auto Balance" is the final settlement.
-            is_auto_balance_line = line.is_auto_balance
-            
-            if is_auto_balance_line:
-                money_lines.append(line)
-                continue
-
-            # Categorize Items (Manual Money is just an item now)
-            if not line.display_type:
-                if line.is_trade_in:
-                    buy_lines.append(line)
-                else:
-                    sell_lines.append(line)
-            else:
-                # Notes or generic sections
-                other_lines.append(line)
-
-        # --- 2. Calculate Balance Needed ---
-        # Sum of all GOODS (Sell + Buy + Others + Manual Money). 
-        # Manual Money (VND) acts like a product value. Use price_subtotal.
-        grand_total_goods = sum(l.price_subtotal for l in sell_lines + buy_lines + other_lines)
-        
-        balance_needed = -grand_total_goods
-             # Handle "Zero Balance" (Perfectly balanced without extra money)
-        # Use currency rounding or a small epsilon
         rounding_precision = company.currency_id.rounding or 0.001
         
-        # --- 3. Handle Money Line ---
-        if abs(balance_needed) < rounding_precision:
-            # Balanced -> Remove Money lines
-            money_lines = [] 
-        else:
-             # Prepare Values
-             vals = {
+        # --- 1. Identify Components (Deletion Handling & Clean Separation) ---
+        
+        # Lists from Tabs (The Authority for their respective domains)
+        # CRITICAL FIX: Filter out Auto-Balance lines from Tabs immediately
+        # The Tabs might contain the auto-balance line because of domain match (is_trade_in), 
+        # but for calculation purposes, we treat them strictly as "Goods".
+        tab_sell_lines = self.order_line_sell.filtered(lambda l: not l.is_auto_balance)
+        tab_buy_lines = self.order_line_trade_in.filtered(lambda l: not l.is_auto_balance)
+        
+        # Master List
+        master_lines = self.order_line
+        
+        # Identify Existing Auto-Balance Lines from Master (for updating)
+        current_money_lines = master_lines.filtered(lambda l: l.is_auto_balance)
+        
+        # Identify "Other" lines (Notes, Sections, or lines not covered by Tabs)
+        # Strategy: Keep lines from Master ONLY if they don't belong to Sell/Buy domains.
+        # If they belong to Sell/Buy domain but are missing from Tabs, they are effectively deleted.
+        
+        # Note: We already filtered tab_sell/buy to exclude auto_balance.
+        # So we just need to ensure we don't accidentally drop valid goods.
+        
+        preserved_other_lines = self.env['sale.order.line']
+        
+        # We need a robust way to know if a line "Should belong to Sell Tab".
+        # Definition: is_trade_in=False AND is_auto_balance=False.
+        
+        for line in master_lines:
+            if line.is_auto_balance:
+                continue # We reconstruct money line later, don't preserve it here
+                
+            if line.is_trade_in:
+                # Should be in Buy Tab
+                if line not in tab_buy_lines:
+                     continue # Deleted from Buy Tab -> Drop
+            else:
+                # Should be in Sell Tab
+                if line not in tab_sell_lines:
+                     continue # Deleted from Sell Tab -> Drop
+            
+            # If line is in tab lists, it's safe.
+            # If line is something else (e.g. unknown domain?), preserve it.
+            # But currently our domain covers everything (True/False).
+            pass
+
+        # Since tab_sell_lines and tab_buy_lines cover all "Goods" (non-money) scenarios,
+        # The Union of them IS the source of truth for Goods.
+        
+        # CRITICAL FIX (Step 2090): Filter out "Empty/Ghost" lines that have no Name/Product/Type.
+        # These lines might be created in UI (NewId) but not filled, causing "Missing Description" error on Confirm.
+        all_goods_lines = (tab_sell_lines | tab_buy_lines).filtered(
+            lambda l: l.display_type or l.product_id or l.name
+        )
+        
+        # --- 2. Calculate Balance Needed ---
+        grand_total_goods = sum(l.price_subtotal for l in all_goods_lines if not l.display_type)
+        balance_needed = -grand_total_goods
+        
+        # --- 3. Manage Money Line ---
+        money_vals = {}
+        has_money_needed = abs(balance_needed) >= rounding_precision
+        
+        if has_money_needed:
+            # Prepare Values
+            money_vals = {
                 'product_id': money_product.id if money_product else False,
+                'original_product_id': money_product.id if money_product else False,
                 'is_auto_balance': True,
                 'sequence': 9999, 
                 'product_uom': money_product.uom_id.id if money_product else False,
-                # Name will be updated below
             }
-             # Trade-in Logic for Money
-             if balance_needed < 0:
-                 # Need to pay out money (negative total) -> "Buy" money?
-                 # No, balance_needed = -goods. 
-                 # If Sell (Goods > 0) -> Balance < 0. We need to "Collect" (-).
-                 # If Buy (Goods < 0) -> Balance > 0. We need to "Pay" (+).
-                 
-                 # Case: Sell (Revenue). Balance Needed is Negative (to offset).
-                 # Meaning Line is Negative.
-                 # "Thu tiền về" (Collecting Money).
-                 vals.update({
-                     'is_trade_in': True, # Techically "buying" money? Or just negative line.
+            # Determine Direction
+            if balance_needed < 0:
+                 # "Thu tiền về"
+                 money_vals.update({
+                     'is_trade_in': True,
                      'price_unit_base': 1.0, 
                      'product_uom_qty': abs(balance_needed), 
                      'price_unit': -1.0,
                      'name': 'Thu tiền mặt (Tự động)'
                  })
-             else:
-                 # Case: Buy (Expense). Balance Needed is Positive (to offset).
-                 # Meaning Line is Positive.
-                 # "Chi tiền ra" (Paying Money).
-                 vals.update({
+            else:
+                 # "Chi tiền ra"
+                 money_vals.update({
                      'is_trade_in': False, 
                      'price_unit_base': 1.0, 
                      'product_uom_qty': abs(balance_needed), 
                      'price_unit': 1.0,
                      'name': 'Chi tiền mặt (Tự động)'
                  })
-             
-             if not money_product:
-                 # Safety check if config missing
-                 money_lines = []
-             elif money_lines:
-                 # Update existing
-                 money_lines[0].update(vals)
-                 money_lines = [money_lines[0]] # Keep only one
+
+        # --- 4. Apply Updates to Master ---
+        
+        # Reconstruct Master = All Goods + (Money Line if needed)
+        final_lines = all_goods_lines
+        
+        if not money_product:
+             pass
+        elif has_money_needed:
+             if current_money_lines:
+                 # Update existing (Use the first one found)
+                 money_line = current_money_lines[0]
+                 money_line.update(money_vals)
+                 final_lines += money_line
+                 
+                 # Remove extra duplicate money lines if any existed
+                 if len(current_money_lines) > 1:
+                     # They are not added to final_lines, so they will be unlinked/removed from relation
+                     pass
              else:
-                 # Create new
-                 new_money = self.env['sale.order.line'].new(vals)
-                 money_lines = [new_money]
-
-        # --- 4. Maintain Sections (Append if missing) ---
-        new_lines_to_add = self.env['sale.order.line']
+                 # Create New
+                 new_money = self.env['sale.order.line'].new(money_vals)
+                 final_lines += new_money
         
-        if not sell_section:
-            sell_section = self.env['sale.order.line'].new({
-                'display_type': 'line_section', 'name': 'Hàng Bán (Xuất)', 'sequence': 0,
-            })
-            new_lines_to_add += sell_section
-            
-        if not buy_section:
-            buy_section = self.env['sale.order.line'].new({
-                'display_type': 'line_section', 'name': 'Hàng Mua (Nhập)', 'sequence': 100,
-            })
-            new_lines_to_add += buy_section
-            
-        if not money_section:
-            money_section = self.env['sale.order.line'].new({
-                'display_type': 'line_section', 'name': 'Tiền Tự động', 'sequence': 9998,
-            })
-            new_lines_to_add += money_section
-
-        if new_lines_to_add:
-            self.order_line += new_lines_to_add
-
-        # --- 5. Manage Money Line (Add/Remove/Update) ---
-        # The 'money_lines' list contains existing lines that matched.
-        # 'new_money' (if created above) needs to be added.
-        # 'money_lines' (if empty/removed) needs to be removed from self.order_line?
+        # CRITICAL ASSIGNMENT & FOCUS OPTIMIZATION
+        # Only assign if the Recordset content has changed (e.g. Added/Removed lines).
+        # If only values changed (e.g. Qty update), final_lines == self.order_line (Set comparison)
+        # This prevents full re-render and preserves Focus.
+        if self.order_line != final_lines:
+            self.order_line = final_lines
         
-        if abs(balance_needed) < rounding_precision:
-            # Balanced -> Remove existing money lines if any
-            if money_lines:
-                # Remove from recordset
-                for l in money_lines:
-                     self.order_line -= l
-        else:
-            # Need Money Line
-            if 'new_money' in locals():
-                # We created a new one in step 3, and it hasn't been added to order_line yet
-                self.order_line += new_money
-            # If money_lines existed (from loop), we already updated it in step 3 (money_lines[0].update(vals))
-            # No need to do anything else.
-
-        # --- 6. NO FORCED RE-SORTING ---
-        # We rely on 'default_sequence' from the Button Context to place lines correctly (10 vs 110).
-        # We rely on View 'default_order="sequence, id"' to show them sorted.
-        # RE-WRITING self.order_line triggers a full re-render, killing Focus.
-        # So we STOP doing that.
+        # --- 5. Force UI Refresh ---
+        # Similarly, only push to Tabs if Master changed or if we need to sync specific filtered views.
+        # But for Tabs, we rely on the filtered set.
+        # If self.order_line changed, we MUST update tabs.
+        # If self.order_line didn't change (Value update), Tabs usually reflect it auto-magically?
+        # To be safe and preserve focus, we also check equality.
+        
+        new_sell = self.order_line.filtered(lambda l: not l.is_trade_in)
+        new_buy = self.order_line.filtered(lambda l: l.is_trade_in)
+        
+        if self.order_line_sell != new_sell:
+            self.order_line_sell = new_sell
+            
+        if self.order_line_trade_in != new_buy:
+             self.order_line_trade_in = new_buy
 
 
     @api.depends('partner_id')
@@ -481,6 +534,14 @@ class SaleOrder(models.Model):
         return moves
 
     def action_confirm(self):
+        # CLEANUP: Remove "Ghost" lines (Empty lines from UI) before Confirming
+        # This prevents "Missing Description (name)" error if user added a line but left it empty.
+        # We check for lines with no Display Type (Section/Note), No Product, and No Name.
+        empty_lines = self.order_line.filtered(lambda l: not l.display_type and not l.product_id and not l.name)
+        if empty_lines:
+            for line in empty_lines: # Added loop as per instruction
+                line.unlink()
+            
         res = super(SaleOrder, self).action_confirm()
 
         for order in self:

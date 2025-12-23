@@ -21,10 +21,13 @@ class SaleOrderLine(models.Model):
             line.gold_purity = line.original_product_id.gold_purity_standard or 1.0
             line.original_uom_id = line.original_product_id.uom_id
             
-            # 2. Set Active Product (Same as Original) - CHANGED: Do NOT switch to Target
-            # We keep the Original Product as the "Product" of the line for Stock purposes.
-            # line.product_id = line.original_product_id.conversion_target_id 
-            line.product_id = line.original_product_id
+            # 2. Set Active Product (Target)
+            # USER REQUEST: Default to Conversion Target if available.
+            # Stock Logic relies on _prepare_procurement_values overriding this back to Original.
+            if line.original_product_id.conversion_target_id:
+                line.product_id = line.original_product_id.conversion_target_id
+            else:
+                line.product_id = line.original_product_id
                 
             # 3. Set Default Exchange Rate (from Target Product or Original?)
             # Usually we take the Target Product's price as the base for exchange
@@ -69,22 +72,24 @@ class SaleOrderLine(models.Model):
             
             if is_stock_mode:
                 # === STOCK MODE (Gold -> Gold) ===
-                # NEW LOGIC: 
-                # Qty = Net Weight (Original)
-                # Value = (Converted Qty * Rate) + Comp
-                # Unit Price = Value / Qty
+                # NEW LOGIC (Phase 12): 
+                # Display Qty in UI = Net Weight * Purity (Converted Qty)
+                # To make Price Unit = Standard Price (Round Number)
                 
-                # 1. Quantity = Actual Weight
-                line.product_uom_qty = net_weight
+                # 1. Quantity = Converted Weight (Net * Purity)
+                # Note: Default Odoo precision might restrict this, but we set high precision for Gold.
+                converted_qty = net_weight * purity
+                line.product_uom_qty = converted_qty
                 
                 # 2. Calculate Total Target Value
-                # Converted Qty (Theoretical 9999) = Net Weight * Purity
-                converted_qty = net_weight * purity
+                # Target Value = (Converted Qty * Rate) + Comp
                 target_value = (converted_qty * exchange_rate) + compensation
                 
                 # 3. Calculate Equivalent Unit Price
-                if abs(net_weight) > 0.000001:
-                    new_price_unit = target_value / net_weight
+                # Price Unit = Value / Display Qty
+                # If Display Qty is Converted Qty, then Price Unit = Rate + (Comp/Qty)
+                if abs(converted_qty) > 0.000001:
+                    new_price_unit = target_value / converted_qty
                 else:
                     new_price_unit = 0.0
                 
@@ -112,14 +117,52 @@ class SaleOrderLine(models.Model):
             if line.order_id:
                 line.order_id._onchange_balance_money()
 
+    @api.onchange('gold_purity')
+    def _onchange_gold_purity_switch_variant(self):
+        """
+        Phase 12: Auto-switch Original Product Variant based on Purity.
+        When Purity changes, check if there is a variant of the same template
+        that has matching gold_purity_standard.
+        """
+        for line in self:
+            if not line.original_product_id or not line.gold_purity:
+                continue
+            
+            # Avoid loop: If current product already matches, do nothing
+            # Note: Float comparison needs epsilon
+            if abs(line.original_product_id.gold_purity_standard - line.gold_purity) < 0.00001:
+                continue
+
+            # Search for sibling variant
+            template = line.original_product_id.product_tmpl_id
+            # Find product.product where product_tmpl_id = template and gold_purity_standard matches
+            # Limiting to 1 to avoid ambiguity
+            matching_variant = self.env['product.product'].search([
+                ('product_tmpl_id', '=', template.id),
+                ('gold_purity_standard', '=', line.gold_purity)
+            ], limit=1)
+            
+            if matching_variant and matching_variant.id != line.original_product_id.id:
+                # Switch!
+                # STRICT USER REQUIREMENT: Only change original_product_id.
+                # DO NOT change 'product_id' (Converted Product/Target).
+                # We simply assign the new variant. 
+                # Since this is an onchange, simple assignment won't trigger _onchange_original_product automatically in backend.
+                # But to be absolutely safe and clear:
+                current_target_product = line.product_id
+                line.original_product_id = matching_variant
+                # Restore correct target if for some reason it got affected (though it shouldn't)
+                if line.product_id != current_target_product:
+                    line.product_id = current_target_product
+
     @api.onchange('product_id','is_trade_in')
     def _onchange_is_trade_in_trigger_sort(self):
         """Khi thay đổi trạng thái Trade-in, kích hoạt lại logic sắp xếp trên đơn hàng cha."""
         # "Simulated Drag": Force local sequence update.
         if self.is_trade_in:
-            self.sequence = 2000 # Move to "Hàng Mua" zone
+            pass # self.sequence = 2000 # Move to "Hàng Mua" zone
         else:
-            self.sequence = 10   # Move to "Hàng Bán" zone
+            pass # self.sequence = 10   # Move to "Hàng Bán" zone
         
         if self.order_id:
             # Explicit call to parent onchange for full re-balancing and cleanup
@@ -159,10 +202,23 @@ class SaleOrderLine(models.Model):
         comming from a sale order line. This method populates values for the Stock Move.
         """
         values = super(SaleOrderLine, self)._prepare_procurement_values(group_id)
+        
+        # PHASE 12 UPDATE: Override Quantity for Stock Move
+        # Logic: UI uses Converted Quantity, but Stock must use Physical Weight (Net Weight)
+        # Net Weight = Original Weight - Loss Weight
+        physical_qty = max(0, self.original_weight - self.loss_weight)
+        
+        # Only apply override if we are in "Stock Mode" (Gold -> Gold) and strictly using weight logic
+        if self.original_uom_id and physical_qty > 0:
+             values['product_uom_qty'] = physical_qty
+             # CRITICAL: Also override Product to Original Product
+             # Because we are using Physical Quantity (of Original), we must use Original Product.
+             # Otherwise we have 10 chi (Physical) of Vàng 9999 (Target), which is over-valued.
+             values['product_id'] = self.original_product_id.id
+        
         # Propagate Conversion Data to Stock Move
         values.update({
-            'is_trade_in': self.is_trade_in, # While Stock Move doesn't have is_trade_in directly (maybe related?), Mixin has it? 
-            # Check StockMove definition. It inherits mixin.
+            'is_trade_in': self.is_trade_in, 
             'original_product_id': self.original_product_id.id,
             'original_weight': self.original_weight,
             'original_uom_id': self.original_uom_id.id,
@@ -170,6 +226,5 @@ class SaleOrderLine(models.Model):
             'gold_purity': self.gold_purity,
             'exchange_rate': self.exchange_rate,
             'price_compensation': self.price_compensation,
-            # 'price_unit_base': self.price_unit_base, # Stock move might not need base price effectively, but good to have.
         })
         return values
