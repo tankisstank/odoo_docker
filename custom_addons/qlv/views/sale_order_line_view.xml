@@ -10,7 +10,7 @@
             <xpath expr="//page[@name='order_lines']/field[@name='order_line']" position="replace">
                 <notebook>
                     <!-- TAB 1: Bán hàng (Sales) -->
-                    <page string="Bán hàng" name="sell_lines_tab">
+                    <page string="Nhập hàng" name="sell_lines_tab">
                         <field name="order_line_sell" context="{'default_is_trade_in': False}" mode="tree" widget="section_and_note_one2many">
                             <tree string="Chi tiết Bán hàng" editable="bottom" decoration-info="(not display_type and invoice_status == 'to invoice')">
                                 <control>
@@ -60,7 +60,7 @@
                     </page>
 
                     <!-- TAB 2: Mua hàng (Trade-in) -->
-                    <page string="Mua hàng (Thu đổi)" name="trade_in_lines_tab">
+                    <page string="Xuất hàng" name="trade_in_lines_tab">
                          <field name="order_line_trade_in" context="{'default_is_trade_in': True}" mode="tree" widget="section_and_note_one2many">
                             <tree string="Chi tiết Mua hàng" editable="bottom" decoration-info="(not display_type and invoice_status == 'to invoice')">
                                 <control>

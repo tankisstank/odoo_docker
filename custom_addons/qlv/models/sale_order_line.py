@@ -38,6 +38,13 @@ class SaleOrderLine(models.Model):
             elif line.product_id:
                 line.exchange_rate = line.product_id.standard_price if line.is_trade_in else line.product_id.list_price
 
+            # 4. Set Price Compensation from Variant Extra Price (PHASE 10)
+            # Logic: Show UNIT Extra Price.
+            # User Request: "ghi ra giá trị bổ sung từ biến thể... cộng vào... nhân tổng trọng lượng"
+            price_extra = line.original_product_id.price_extra or 0.0
+            line.price_compensation = price_extra
+
+
     @api.onchange('product_id', 'is_trade_in')
     def _onchange_product_target_defaults(self):
         """Update Exchange Rate when Target Product changes."""
@@ -63,7 +70,17 @@ class SaleOrderLine(models.Model):
             net_weight = max(0, line.original_weight - line.loss_weight)
             purity = line.gold_purity or 0.0
             exchange_rate = line.exchange_rate or 0.0
-            compensation = line.price_compensation or 0.0
+            
+            # PHASE 10: Auto-Calculate Compensation from Variant Extra Price
+            # Logic: Default to Variant's Extra Price (Unit) if not manually edited?
+            # Or just rely on _onchange_original_product to set it once.
+            # If we put it here, it enforces the variants price.
+            # User wants "system automatically adds...", implying it comes from the product.
+            # To allow manual override, we should only set it if it's 0 or matches the product?
+            # Better: Rely on _onchange_original_product for initial set. 
+            # Remove the auto-overwrite here to allow manual edit.
+            
+            compensation_unit = line.price_compensation or 0.0
             
             # Detect Mode: Stock vs Money
             is_stock_mode = True
@@ -72,22 +89,21 @@ class SaleOrderLine(models.Model):
             
             if is_stock_mode:
                 # === STOCK MODE (Gold -> Gold) ===
-                # NEW LOGIC (Phase 12): 
-                # Display Qty in UI = Net Weight * Purity (Converted Qty)
-                # To make Price Unit = Standard Price (Round Number)
                 
                 # 1. Quantity = Converted Weight (Net * Purity)
-                # Note: Default Odoo precision might restrict this, but we set high precision for Gold.
                 converted_qty = net_weight * purity
                 line.product_uom_qty = converted_qty
                 
                 # 2. Calculate Total Target Value
-                # Target Value = (Converted Qty * Rate) + Comp
-                target_value = (converted_qty * exchange_rate) + compensation
+                # Formula: ((Rate * Purity) + Compensation_Unit) * Net_Weight
+                # Which equals: (Rate * Converted_Weight) + (Compensation_Unit * Net_Weight)
+                
+                base_value = converted_qty * exchange_rate
+                extra_value = compensation_unit * net_weight
+                target_value = base_value + extra_value
                 
                 # 3. Calculate Equivalent Unit Price
                 # Price Unit = Value / Display Qty
-                # If Display Qty is Converted Qty, then Price Unit = Rate + (Comp/Qty)
                 if abs(converted_qty) > 0.000001:
                     new_price_unit = target_value / converted_qty
                 else:
@@ -95,15 +111,15 @@ class SaleOrderLine(models.Model):
                 
             else:
                 # === MONEY MODE (Gold -> Money) ===
-                # Customer sells Gold for Money.
-                # Target Product is likely "VND" or "Cash". Qty usually 1.
                 
                 # 1. Qty
                 line.product_uom_qty = 1.0
                 
                 # 2. Price
-                # Value = (Net Weight * Purity * Exchange Rate) + Compensation
-                total_value = (net_weight * purity * exchange_rate) + compensation
+                # Value = ((Rate * Purity) + Compensation) * Net_Weight
+                # Note: Exchange Rate here usually is Per-Purity-Unit (like 9999 rate).
+                
+                total_value = (net_weight * purity * exchange_rate) + (compensation_unit * net_weight)
                 new_price_unit = total_value
 
             # === Final Direction (Buy/Sell) ===
