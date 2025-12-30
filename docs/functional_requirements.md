@@ -32,23 +32,15 @@ Dưới đây là danh sách các yêu cầu chức năng chi tiết cho hệ th
 -   **Đối tác hợp nhất:**
     -   Không phân biệt Khách hàng và Nhà cung cấp (`res.partner`).
 
-## 4. Quản lý Cầm đồ / Vay Mượn (Pawn & Loan)
--   **Quy trình Cầm đồ:**
-    -   Tạo phiếu cầm cố (Định giá tài sản và Số tiền vay).
-    -   **Xác nhận (Confirm):**
-        -   Hệ thống sinh phiếu nhập kho "Tài sản" (Kho Khách gửi).
-        -   Hệ thống sinh phiếu xuất kho "Tiền mặt" (Giải ngân cho khách).
-    -   **Chuộc đồ (Redeem):**
-        -   Khách trả tiền: Hệ thống sinh phiếu thu "Tiền mặt".
-        -   Trả lại đồ: Hệ thống sinh phiếu xuất trả "Tài sản".
-    -   **Thanh lý (Liquidate):**
-        -   Khi khách quá hạn, chuyển sang thanh lý.
-        -   Hệ thống tự động trả lại hàng "ảo" để xóa công nợ kho.
-        -   Tự tạo **Đơn bán hàng** (Sale Order) ở trạng thái **Trade-in** (Mua lại hàng từ khách).
-        -   Liên kết chặt chẽ giữa phiếu Cầm cố và Đơn thanh lý.
--   **Kiểm soát:**
-    -   Chặn sửa đổi thông tin (Readonly) khi phiếu đã kết thúc (Thanh lý/Đã chuộc) để bảo toàn dữ liệu lịch sử.
-    -   Ghi chú vẫn cho phép chỉnh sửa để cập nhật thông tin xử lý.
+## 4. Quản lý Cầm đồ / Vay Mượn (Pawn & Loan) - Đã tích hợp
+-   **Tích hợp hoàn toàn vào Đơn bán hàng (`sale.order`):**
+    -   Không còn module riêng biệt `pawn.order`. Mọi nghiệp vụ Cầm cố/Gửi sổ được xử lý trực tiếp trên Đơn hàng.
+    -   **Cầm đồ:** Tạo đơn Trade-in (Mua vào). Khách bán tạm cho Shop.
+    -   **Chuộc đồ:** Tạo đơn Bán ra (Shop bán lại cho Khách).
+    -   **Ghi chú:** Sử dụng trường `note` hoặc Sequence riêng để phân biệt.
+-   **Đơn hàng treo (Pending Orders):**
+    -   Tại giao diện Đơn hàng bán, danh sách "Đơn hàng chưa hoàn thành" sẽ hiển thị toàn bộ các giao dịch cũ (bao gồm cả Cầm cố cũ) của khách hàng để nhân viên dễ dàng thao tác thanh toán/tất toán.
+
 
 ## 5. Quy trình bán hàng (Sales Workflow)
 
@@ -69,6 +61,18 @@ Dưới đây là danh sách các yêu cầu chức năng chi tiết cho hệ th
     -   Khi Confirm, hệ thống tự động tách các dòng hàng thành các phiếu kho riêng biệt:
         -   Hàng Bán -> Phiếu Xuất (Delivery Order).
         -   Hàng Mua/Trade-in -> Phiếu Nhập (Receipt).
+-   **Thanh toán Bù trừ / Tất toán đơn cũ (Order Settlement):**
+    -   **Mục đích:** Khi khách hàng muốn tất toán một đơn hàng cũ (đang treo, đang cầm cố) để chuyển sang đơn hàng mới hoặc trả tiền.
+    -   **Cơ chế "Chuyển Đơn" (Order Transfer):**
+        -   Từ Đơn Mới, nhân viên chọn đơn cũ cần tất toán trong danh sách "Đơn hàng chưa hoàn thành".
+        -   Bấm nút **Thanh toán**.
+        -   Hệ thống tự động:
+            1.  **Hủy phiếu kho treo** của đơn cũ (nếu chưa hoàn thành).
+            2.  **Khóa đơn cũ** (chuyển trạng thái "Đã giao dịch/Completed").
+            3.  **Chuyển toàn bộ hàng hóa & nghĩa vụ tài chính** dở dang sang Đơn Mới.
+            4.  Tại Đơn Mới, các dòng này xuất hiện dưới dạng Trade-in (Thu về) hoặc Bán ra.
+            5.  Dòng tiền cân bằng được tính toán lại để chốt số tiền cuối cùng khách cần trả/nhận.
+
 
 ## 5. Quy trình Kế toán (Accounting Workflow)
 

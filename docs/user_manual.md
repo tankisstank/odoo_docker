@@ -55,30 +55,43 @@ Nếu không dùng script, bạn cần thực hiện các bước sau:
 4.  **Kiểm tra tổng tiền:** Hệ thống sẽ tự động trừ tiền hàng khách bán lại khỏi tổng tiền khách phải trả.
 5.  **Confirm:** Xác nhận đơn hàng. Hệ thống sẽ tạo 1 phiếu xuất kho (giao hàng mới) và 1 phiếu nhập kho (nhận hàng cũ).
 
-## 5. Hướng dẫn Nghiệp vụ Cầm cố (Pawn)
+## 5. Hướng dẫn Nghiệp vụ Cầm cố / Gửi sổ (Tích hợp)
+*Lưu ý: Tính năng này hiện được thực hiện trực tiếp trên giao diện Đơn bán hàng.*
 
-### a. Tạo phiếu Cầm cố
-1.  Truy cập menu **Cầm cố / Vay mượn**.
-2.  Tạo mới phiếu, chọn Khách hàng, Nhập số tiền vay và Lãi suất (nếu có).
-3.  Thêm tài sản cầm cố (Vàng) và định giá.
-4.  Bấm **Xác nhận**: Hệ thống tự động tạo phiếu nhập kho tài sản và xuất tiền.
+### a. Tạo phiếu Cầm cố (Khách gửi vàng lấy tiền)
+1.  Tạo **Đơn bán hàng** mới.
+2.  Chọn **Khách hàng**.
+3.  Thêm dòng sản phẩm khách đưa (Trade-in):
+    - Tích chọn `Hàng mua vào (Trade-in)`.
+    - Nhập số lượng và định giá.
+4.  Tại dòng tiền (Auto Balance), hệ thống sẽ hiển thị "Chi tiền mặt" (Số tiền Shop đưa cho khách).
+5.  **Ghi chú:** Có thể nhập vào ô Ghi chú là "Cầm cố 1 tháng...".
+6.  **Confirm:** Xác nhận đơn. Hàng vào kho, tiền ra khỏi quỹ. Đơn hàng ở trạng thái đang giao dịch.
 
-### b. Chuộc đồ
-1.  Mở phiếu đang ở trạng thái "Đang cầm cố".
-2.  Bấm **Khách chuộc lại**.
-3.  Hệ thống xác nhận khách đã trả tiền và tạo phiếu trả lại tài sản.
+### b. Chuộc đồ (Khách trả tiền lấy vàng)
+1.  Nếu khách muốn chuộc lại đúng món đồ đó:
+    - Tạo Đơn bán hàng mới.
+    - Tìm lại đơn cũ trong danh sách **"Đơn hàng chưa hoàn thành"**.
+    - Sử dụng tính năng **Thanh toán (Settlement)** (xem mục dưới).
+2.  Hoặc tạo đơn bán hàng mới, bán lại sản phẩm tương đương.
 
-### c. Thanh lý (Khách bỏ đồ)
-1.  Mở phiếu Cầm cố cần thanh lý.
-2.  Bấm **Chuyển sang Mua bán (Thanh lý)**.
-3.  Hệ thống sẽ:
-    -   Kết thúc phiếu cầm cố.
-    -   Tự động tạo một **Đơn bán hàng** mới cho khách này.
-    -   Đưa tài sản vào đơn hàng dưới dạng **Trade-in** (Mua lại).
-4.  Bạn có thể bấm vào nút **"Đơn Thanh lý"** trên phiếu để chuyển sang đơn bán và thương lượng giá thêm với khách.
+### c. Chuyển Đơn / Thanh toán Bù trừ (Settlement)
+Khi khách muốn tất toán một đơn hàng cũ (đang nợ/cầm cố) để chuyển sang giao dịch mới:
 
-### d. Theo dõi khi Bán hàng
--   Tại giao diện **Đơn bán hàng**, khi chọn Khách hàng, hệ thống sẽ tự động hiển thị danh sách **"Đơn Cầm cố đang hiệu lực"** của khách đó ngay bên dưới, giúp bạn nắm bắt tổng quan tình hình nợ/tài sản của khách.
+1.  Tạo **Đơn hàng mới**.
+2.  Chọn Khách hàng. Danh sách **"Đơn hàng chưa hoàn thành"** sẽ hiện ra bên dưới.
+3.  Tại dòng đơn cũ cần xử lý, bấm nút **Thanh toán** (biểu tượng tiền).
+4.  Hệ thống sẽ:
+    -   Tự động khóa đơn cũ (Trạng thái chuyển sang "ĐÃ CHUYỂN ĐƠN").
+    -   Đưa toàn bộ hàng hóa của đơn cũ sang đơn mới.
+5.  Trên đơn mới, bạn tiếp tục thêm/bớt các sản phẩm mua bán khác.
+6.  Số tiền chênh lệch cuối cùng sẽ được tính toán tự động.
+7.  **Lưu và Xác nhận** đơn mới để hoàn tất giao dịch.
+
+
+
+
+
 
 ## 6. Hướng dẫn Quản lý Công nợ (Module `qlv`)
 

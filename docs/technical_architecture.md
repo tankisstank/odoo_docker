@@ -25,22 +25,34 @@ Dự án hiện tại đã hợp nhất các tính năng vào một module lõi 
 *   **Quản lý Trạng thái & UI Fix:**
     *   Field `custom_state`: Ánh xạ lại trạng thái gốc (draft, sale, done) sang ngôn ngữ nghiệp vụ (Đang lập phiếu, Hợp đồng...).
     *   **Locking:** Override hàm `write()` để chặn sửa đổi khi đơn ở trạng thái `done` hoặc `invoiced`.
+    *   **Visual Status (Ribbons):**
+        *   "ĐÃ HOÀN TẤT" (Xanh lá): Đơn đã xong và không nợ đọng.
+        *   "ĐÃ HỦY" (Đỏ): Đơn đã hủy.
+        *   "ĐÃ CHUYỂN ĐƠN" (Xanh dương): Đơn đã được quyết toán sang đơn khác.
     *   **JS Patch (`force_sort_patch.js`):** Can thiệp vào `ListRenderer`.
+
         *   Tự động phát hiện khi User "Thêm hàng".
         *   Chặn hành vi nhảy Focus khi danh sách được sắp xếp lại.
         *   Cơ chế **Polling** tìm lại dòng vừa nhập để restore focus (cursor).
 
-#### c. Nghiệp vụ Cầm cố (`pawn.order` - NEW)
-*   **Model:** `pawn.order` và `pawn.order.line`.
-*   **Workflow:**
-    *   **Confirm:** Tạo phiếu nhập kho Tài sản + Phiếu xuất kho Tiền.
-    *   **Redeem:** Tạo phiếu thu Tiền + Phiếu trả Tài sản.
-    *   **Liquidate:** 
-        *   Tạo phiếu trả hàng ảo (Clear Stock Owner).
-        *   Tạo `sale.order` mới với các line là Trade-in.
-        *   Link `pawn.order` -> `sale.order`.
-*   **Trạng thái & Quyền hạn:**
-    *   Sử dụng `readonly` attributes ở View layer để khóa dữ liệu khi phiếu đã tất toán (chỉ mở `note`).
+#### c. Nghiệp vụ Cầm cố (Legacy Removed)
+*   **Module `pawn.order`:** Đã bị xóa bỏ.
+*   **Logic mới:** Sử dụng `sale.order` với flag `is_trade_in` và `legacy_transaction_status` để quản lý cầm cố/ký gửi.
+
+#### d. Tính năng Thanh toán Bù trừ (`action_settle_debt`)
+*   **Mục đích:** Chuyển giao dịch dở dang từ đơn cũ sang đơn mới để tất toán.
+*   **Quy trình Backend:**
+    1.  **Safety Check:** Kiểm tra đơn cũ chưa hoàn tất (`pickings not done`).
+    2.  **Cancel Logistics:** Gọi `picking.action_cancel()` cho các phiếu kho treo của đơn cũ.
+    3.  **Lock Order:** Gọi `action_done()` cho đơn cũ để khóa sổ. Override `custom_state` để hiển thị Ribbon "ĐÃ CHUYỂN ĐƠN".
+    4.  **Transfer Lines:** 
+        *   Copy `sale.order.line` từ đơn cũ sang đơn mới.
+        *   Đảo ngược dấu (Bán -> Mua, Mua -> Bán) nếu cần để triệt tiêu nghĩa vụ.
+    5.  **Re-Calculate:** Gọi lại logic `update_auto_balance_money_db` để cân bằng tiền trên đơn mới.
+*   **Traceability:**
+    *   Lưu vết `settled_to_order_id` trên đơn cũ.
+    *   Lưu vết `settled_order_id` trên từng dòng của đơn mới.
+
 
 ### 6. Logic Tính Công Nợ (Debt Calculation)
 **Mô hình:** Tiền là Hàng hóa (`product.product`).

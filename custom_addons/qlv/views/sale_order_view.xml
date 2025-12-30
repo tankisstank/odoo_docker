@@ -11,12 +11,30 @@
                 <xpath expr="//header" position="inside">
                     <!-- Ensure custom_state is loaded for attrs evaluation -->
                     <field name="custom_state" invisible="1"/>
-                    <button name="%(qlv.action_pawn_order)d" string="Gửi sổ / Cầm cố" type="action" class="btn-secondary" 
-                        icon="fa-book"
-                        attrs="{'invisible': [('state', '!=', 'draft')]}"/>
+                    <field name="settled_to_order_id" invisible="1"/>
+
                     <button name="action_super_cancel" string="Hủy đơn hàng" type="object" class="btn-danger"
                         confirm="CẢNH BÁO: Bạn đang thực hiện HỦY ĐƠN HÀNG. Hệ thống sẽ tự động hoàn tác các phiếu kho và hóa đơn liên quan. Bạn có chắc chắn muốn tiếp tục?"
                         attrs="{'invisible': [('state', 'not in', ['sale', 'done'])]}"/>
+                </xpath>
+
+                <xpath expr="//sheet/div[@name='button_box']" position="after">
+                     <!-- 1. Cancelled -->
+                    <widget name="web_ribbon" title="ĐÃ HỦY" bg_color="bg-danger" attrs="{'invisible': [('state', '!=', 'cancel')]}"/>
+                    
+                    <!-- 2. Completed (Normal) - Only show if DONE and NOT TRANSFERRED -->
+                    <widget name="web_ribbon" title="ĐÃ HOÀN TẤT" bg_color="bg-success" attrs="{'invisible': ['|', ('state', '!=', 'done'), ('settled_to_order_id', '!=', False)]}"/>
+                    
+                    <!-- 3. Settled/Transferred - Show if TRANSFERRED -->
+                    <widget name="web_ribbon" title="ĐÃ CHUYỂN ĐƠN" bg_color="bg-info" attrs="{'invisible': [('settled_to_order_id', '=', False)]}"/>
+                </xpath>
+
+                <xpath expr="//field[@name='partner_id']" position="before">
+                     <!-- Prominent Link to New Order -->
+                     <div class="alert alert-info" role="alert" style="margin-bottom: 5px;" attrs="{'invisible': [('settled_to_order_id', '=', False)]}">
+                        <strong>ĐƠN HÀNG ĐÃ ĐƯỢC CHUYỂN SANG: </strong>
+                        <field name="settled_to_order_id" readonly="1" options="{'no_open': False}" class="oe_inline"/>
+                     </div>
                 </xpath>
 
                 <xpath expr="//field[@name='partner_id']" position="attributes">
@@ -58,18 +76,37 @@
                     <separator string="Đơn hàng chưa hoàn thành" style="background-color: lightgrey;"   />
                     <field name="pending_order_ids" mode="tree" readonly="1">
                         <tree>
-                            <field name="name"/>
-                            <field name="date_order"/>
-                            <field name="amount_total" sum="Total Tax Included"/>
-                            <field name="state" invisible="1"/>
-                            <field name="custom_state" 
+                            <field name="name" string="Mã GD"/>
+                            <field name="date_order" widget="datetime" string="Thời gian"/>
+                            <field name="note" string="Ghi chú" optional="show"/>
+                            <field name="summary_goods_in" string="Hàng Nhập" optional="show"/>
+                            <field name="summary_goods_out" string="Hàng Xuất" optional="show"/>
+                            <field name="money_total_in" string="Tiền Nhập" optional="show" decoration-danger="1" sum="Tổng Tiền Nhập"/>
+                            <field name="money_total_out" string="Tiền Xuất" optional="show" decoration-danger="1" sum="Tổng Tiền Xuất"/>
+                            <field name="legacy_type" string="Loại" widget="badge" 
+                                decoration-info="legacy_type == 'nhap'" 
+                                decoration-warning="legacy_type == 'xuat'" 
+                                decoration-success="legacy_type == 'hdkb'" 
+                                decoration-primary="legacy_type == 'hdkm'" optional="show"/>
+                            <field name="legacy_transaction_status" string="Nợ" widget="badge" 
+                                decoration-danger="legacy_transaction_status == 'khach_no'" 
+                                decoration-warning="legacy_transaction_status == 'khach_gui'" 
+                                decoration-success="legacy_transaction_status == 'can_bang'" optional="show"/>
+                            
+                            <field name="custom_state" string="Tình trạng"
                                 widget="badge" 
                                 decoration-success="custom_state == 'done_delivery'" 
                                 decoration-info="custom_state == 'partial'" 
                                 decoration-muted="custom_state == 'invoiced'"/>
+                                
+                            <button name="action_settle_debt" type="object" icon="fa-money" 
+                                string="Thanh toán" help="Cấn trừ vào đơn hàng hiện tại"
+                                context="{'target_order_id': parent.id}"/>
+                            <field name="state" invisible="1"/>
                         </tree>
                     </field>
                     
+                    <!--
                     <separator string="Đơn Cầm cố / Vay mượn đang hiệu lực" style="background-color: #ffeba1; margin-top: 20px;"/>
                     <field name="pending_pawn_ids" mode="tree" readonly="1">
                         <tree>
@@ -77,13 +114,13 @@
                             <field name="date_order"/>
                             <field name="amount_loan" sum="Tổng vay"/>
                             <field name="interest_rate"/>
-                            <!-- state is already here as badge, but let's make sure it's available for logic if needed, although visible field is enough -->
                              <field name="state" 
                                 widget="badge" 
                                 decoration-info="state == 'draft'" 
                                 decoration-warning="state == 'confirmed'"/>
                         </tree>
                     </field>
+                    -->
                 </xpath>
 
             </field>

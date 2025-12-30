@@ -19,11 +19,13 @@
     <menuitem id="menu_gold_debt_offset" name="Cấn trừ Công nợ" parent="menu_gold_debt_root" sequence="30" action="action_gold_debt_offset_wizard"/>
 
     <!-- PAWN ORDER MENU (Inside Sales App) -->
+    <!--
     <menuitem id="menu_qlv_pawn_order" 
               name="Cầm cố / Gửi sổ" 
               parent="sale.sale_menu_root" 
               action="action_pawn_order" 
               sequence="5"/>
+    -->
 
     <!-- Configuration Menu -->
     <menuitem id="menu_qlv_configuration" name="Cấu hình" parent="sale.sale_menu_root" sequence="100"/>

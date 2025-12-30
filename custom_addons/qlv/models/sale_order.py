@@ -32,10 +32,8 @@ class SaleOrder(models.Model):
         return super(SaleOrder, self).create(vals)
 
     def write(self, values):
-        if 'order_line' in values:
-             _logger.info("QLV DEBUG WRITE: Checking Order Lines...")
-             for i, cmd in enumerate(values['order_line']):
-                 _logger.info(f"QLV DEBUG WRITE Line {i}: {cmd}")
+
+
         # 1. Check Locking Condition
         # If order is formally "Done" (Invoiced or Delivered), block critical edits.
         # Allow system updates (e.g. from stock moves) or whitelist fields if needed.
@@ -131,6 +129,9 @@ class SaleOrder(models.Model):
             # 3. Cancel Sale Order
             if order.state not in ('draft', 'cancel'):
                 order.with_context(bypass_lock=True).action_cancel()
+                # Fail-safe: If action_cancel didn't update state (e.g. silent failure), force it.
+                if order.state != 'cancel':
+                    order.with_context(bypass_lock=True).write({'state': 'cancel'})
             
             # 4. Set to Draft (Reset)
             order.with_context(bypass_lock=True).action_draft()
@@ -139,8 +140,12 @@ class SaleOrder(models.Model):
 
 
     pending_order_ids = fields.One2many('sale.order', compute='_compute_pending_order_ids', string='Đơn hàng chưa hoàn thành')
-    pending_pawn_ids = fields.One2many('pawn.order', compute='_compute_pending_order_ids', string='Đơn Cầm cố đang hiệu lực')
+    # pending_pawn_ids = fields.One2many('pawn.order', compute='_compute_pending_order_ids', string='Đơn Cầm cố đang hiệu lực')
     auto_balance_money = fields.Boolean('Tự động thanh toán Tiền mặt', default=True, help="Nếu bật, hệ thống sẽ tự động thêm dòng Tiền mặt để cân bằng đơn hàng về 0.")
+
+    # Status Link to New Order (Forward Link)
+    settled_to_order_id = fields.Many2one('sale.order', compute='_compute_settled_to_order', string='Đã thanh toán qua đơn')
+
 
     # === Fields for Custom List View ===
     summary_goods_in = fields.Char('Hàng Nhập', compute='_compute_custom_list_view_summary', store=True)
@@ -193,9 +198,15 @@ class SaleOrder(models.Model):
     def _compute_custom_state(self):
         for order in self:
             # 1. Base State validation
+            # 1. Base State validation
             if order.state in ('draft', 'sent', 'cancel'):
                 order.custom_state = order.state
                 continue
+                
+            if order.state == 'done':
+                order.custom_state = 'done_delivery' # Treat Locked/Done as "Completed"
+                continue
+
 
             # 2. Check Invoiced State
             if order.invoice_status == 'invoiced':
@@ -232,6 +243,416 @@ class SaleOrder(models.Model):
         ('hdkm', 'HĐKM'), # Hợp đồng Khách Mua
         ('mixed', 'Hỗn hợp'),
     ], string='Loại Phiếu (Legacy)', compute='_compute_legacy_type', store=True)
+
+    def action_confirm(self):
+        """
+        Phase 17 Override: Handle Deferred Debt Settlement.
+        Also includes Legacy Trade-in Receipt Logic and Ghost Line Cleanup.
+        """
+        _logger.warning(f">>> ACTION CONFIRM CALLED for {self.mapped('name')} <<<")
+
+        # 1. CLEANUP: Remove "Ghost" lines (Empty lines from UI)
+        empty_lines = self.order_line.filtered(lambda l: not l.display_type and not l.product_id and not l.name)
+        if empty_lines:
+            empty_lines.unlink()
+
+        # CRASH TEST (Verify this method runs)
+        # raise UserError("QLV CRASH TEST: ACTION CONFIRM MERGED!")
+
+        res = super(SaleOrder, self).action_confirm()
+
+        for order in self:
+            _logger.warning(f"DEBUG: Processing Settlement for Order {order.name} (ID {order.id})")
+            
+            # 2. LEGACY: Trade-in Picking Logic (Split by Procurement Group)
+            trade_in_moves = order.picking_ids.move_ids_without_package.filtered(
+                lambda m: m.sale_line_id and m.sale_line_id.is_trade_in
+            )
+            
+            if trade_in_moves:
+                # Group moves by Procurement Group
+                grouped_moves = {}
+                for move in trade_in_moves:
+                    group = move.group_id
+                    if group not in grouped_moves:
+                        grouped_moves[group] = self.env['stock.move']
+                    grouped_moves[group] |= move
+                
+                # Process each Group
+                for group, moves in grouped_moves.items():
+                    # Find existing receipt for THIS group
+                    # Search criteria: Incoming, Not Done/Cancel, Same Group
+                    domain = [
+                        ('picking_type_id.code', '=', 'incoming'),
+                        ('state', 'not in', ('done', 'cancel')),
+                        ('group_id', '=', group.id if group else False),
+                        ('origin', '=', order.name) # Ensure it belongs to this order
+                    ]
+                    # If group is False, we might merge? Or keep distinct?
+                    # Safest: Use group_id match.
+                    
+                    receipt_picking = self.env['stock.picking'].search(domain, limit=1)
+                    
+                    if not receipt_picking:
+                        picking_vals = order._prepare_trade_in_picking()
+                        # IMPORTANT: Assign the correct Group to the Picking
+                        if group:
+                            picking_vals['group_id'] = group.id
+                        
+                        receipt_picking = self.env['stock.picking'].create(picking_vals)
+
+                    # Assign Moves to this Picking
+                    moves.write({
+                        'picking_id': receipt_picking.id,
+                        'location_id': receipt_picking.location_id.id,
+                        'location_dest_id': receipt_picking.location_dest_id.id,
+                    })
+                    # Explicitly update move lines
+                    if moves.move_line_ids:
+                        moves.move_line_ids.write({
+                            'picking_id': receipt_picking.id,
+                            'location_id': receipt_picking.location_id.id,
+                            'location_dest_id': receipt_picking.location_dest_id.id,
+                        })
+
+                # Cancel empty delivery pickings
+                for picking in order.picking_ids:
+                    if picking.picking_type_id.code == 'outgoing' and not picking.move_ids_without_package:
+                        picking.action_cancel()
+
+            # 3. NEW: Deferred Debt Settlement Lock
+            settlement_lines = order.order_line.filtered(lambda l: l.settled_order_id)
+            if settlement_lines:
+                _logger.info(f"DEBUG: Found {len(settlement_lines)} settlement lines")
+                old_orders = settlement_lines.mapped('settled_order_id')
+                
+                for old_order in old_orders:
+                    if old_order.state != 'done':
+                        try:
+                            # 1. CANCEL PENDING PICKINGS on Old Order
+                            # Logic: Obligation transferred to New Order, so Old Order logistics are void.
+                            pending_pickings = old_order.picking_ids.filtered(lambda p: p.state not in ('done', 'cancel'))
+                            if pending_pickings:
+                                _logger.info(f"DEBUG: Cancelling {len(pending_pickings)} pending pickings for OLD Order {old_order.name}")
+                                # Force cancel even if strictly not allowed by standard flow? 
+                                # Standard action_cancel() usually works if not done.
+                                pending_pickings.action_cancel()
+                                old_order.message_post(body=_("Đã hủy phiếu kho treo trước khi khóa đơn (Do chuyển nghĩa vụ sang đơn %s)") % order.name)
+
+                            # 2. LOCK ORDER
+                            old_order.action_done() 
+                            _logger.info(f"DEBUG: Called action_done() on {old_order.name}")
+                            old_order.message_post(body=_("Đơn hàng đã được Khóa tự động do đơn thanh toán bù trừ %s đã được xác nhận.") % order.name)
+                            order.message_post(body=_("Đã kích hoạt khóa đơn cũ %s sau khi xác nhận đơn hàng này.") % old_order.name)
+                        except Exception as e:
+                            _logger.error(f"DEBUG: Failed to Lock {old_order.name}: {e}")
+            
+        return res
+
+
+
+    def action_settle_debt(self):
+        """
+        Create a Settlement line on the Target Order (New Order).
+        Context must contain 'target_order_id'.
+        """
+        target_order_id = self.env.context.get('target_order_id')
+        if not target_order_id:
+            return
+
+        target_order = self.env['sale.order'].browse(target_order_id)
+        
+        for old_order in self:
+            # Simplified Logic: Settle Entry Amount
+            # In a real scenario, this matches 'amount_residual'.
+            amount = old_order.amount_total
+            
+            # Find a product (Money/Gold)
+            product = self.env['product.product'].search([('name', 'ilike', '3 số')], limit=1)
+            if not product:
+                product = self.env['product.product'].search([], limit=1)
+                
+    def action_settle_debt(self):
+        """
+        Phase 19: Full Settlement Transfer (Chuyển Đơn).
+        Logic:
+        1. Iterate through Old Order lines.
+        2. Calculate Net Qty = Delivered - Received (Pending Obligation).
+        3. If Net != 0 -> Create lines in New Order to continue the obligation.
+           - Net > 0 (Cust owes Goods) -> Trade-in Line (Thu hồi).
+           - Net < 0 (Shop owes Goods) -> Sell Line (Bán/Trả).
+        4. Financial Offset (Bù trừ tiền):
+           - If Old Order has excess payment (Paid > Delivered Value), 
+             create an Offset Line (Trade-in Money) in New Order to balance the transferred Goods Value.
+        """
+        target_order_id = self.env.context.get('target_order_id')
+        if not target_order_id:
+            return
+
+        target_order = self.env['sale.order'].browse(target_order_id)
+        
+        # Track Total Transferred Sell Value for Financial Offset Check
+        total_transferred_sell_value = 0.0
+        
+        for old_order in self:
+            # GUARD CLAUSE: Strict Settlement Rule
+            # Request: Only transfer orders that have NOT executed any Delivery/Receipt.
+            # If any picking is Done, we Redirect user to Old Order to handle manually.
+            has_done_pickings = old_order.picking_ids.filtered(lambda p: p.state == 'done')
+            if has_done_pickings:
+                _logger.warning(f"SETTLE: Order {old_order.name} has executed pickings. Redirecting.")
+                # Show specific message? Or just redirect.
+                # Returning an action from here (inside loop) only works for the first one.
+                # Assuming 'self' is usually one order in this context (called via UI).
+                message = _("Đơn hàng cũ %s đã có giao dịch kho/tiền. Vui lòng xử lý thủ công trên đơn cũ.") % old_order.name
+                
+                # We can post a message on Current Order too
+                if target_order:
+                    target_order.message_post(body=message)
+
+                return {
+                    'type': 'ir.actions.act_window',
+                    'res_model': 'sale.order',
+                    'res_id': old_order.id,
+                    'view_mode': 'form',
+                    'views': [(False, 'form')],
+                    'target': 'current',
+                }
+
+            _logger.info(f"SETTLE: processing Old Order {old_order.name}")
+            
+            # --- STOCK OBLIGATION TRANSFER ---
+            for line in old_order.order_line:
+                if line.display_type: 
+                    continue
+
+                # HYBRID LOGIC:
+                # 1. Skip "Payment" Lines (Trade-in Money). We handle Payments via Financial Balance.
+                # 2. Skip "Auto-Balance" Lines. These are calculation artifacts, not real debts.
+                #    If there is a financial imbalance, the Offset Logic will capture it.
+                if line.is_auto_balance:
+                    continue
+                    
+                if line.product_id == old_order.company_id.money_product_id and line.is_trade_in:
+                    continue
+                
+                # Check custom "Money" products by name if needed
+                # (Assuming 'Tiền' + is_trade_in is the standard Payment line)
+
+                # Calculate Pending Qty based on STOCK MOVES (Physical execution)
+                pending_qty = line.product_uom_qty - line.qty_delivered
+                
+                # Filter small rounding errors
+                if abs(pending_qty) < 0.0001:
+                    continue
+                    
+                _logger.info(f"   Line {line.product_id.name}: Ordered {line.product_uom_qty}, Done {line.qty_delivered}, Pending {pending_qty}")
+
+                # Prepare New Line Values
+                vals = {
+                    'order_id': target_order.id,
+                    'product_id': line.product_id.id,
+                    'original_product_id': line.original_product_id.id if line.original_product_id else line.product_id.id,
+                    'product_uom_qty': abs(pending_qty),
+                    'product_uom': line.product_uom.id,
+                    'price_unit': line.price_unit, # PRESERVE PRICE
+                    'original_weight': line.original_weight,
+                    'gold_purity': line.gold_purity,
+                    'settled_order_id': old_order.id,
+                    'sequence': 900, 
+                    'is_auto_balance': False, 
+                }
+                
+                if not line.is_trade_in:
+                    vals.update({
+                        'is_trade_in': False,
+                        'name': _("Chuyển giao hàng: %s (Từ %s)") % (line.name, old_order.name)
+                    })
+                    total_transferred_sell_value += (vals['product_uom_qty'] * vals['price_unit'])
+                else:
+                    vals.update({
+                        'is_trade_in': True,
+                        'name': _("Chuyển thu hồi: %s (Từ %s)") % (line.name, old_order.name)
+                    })
+                
+                self.env['sale.order.line'].create(vals)
+
+            # --- FINANCIAL OFFSET LOGIC (Bù trừ tiền) ---
+            # Calculates the Net Financial Position of the Old Order.
+            # Balance = (Money Paid Actual) - (Value of Goods Delivered Actual)
+            
+            # 1. Money In/Out Actuals
+            money_lines = old_order.order_line.filtered(lambda l: l.product_id == old_order.company_id.money_product_id)
+            total_paid = sum(abs(l.qty_delivered * l.price_unit) for l in money_lines if l.is_trade_in)
+            total_change = sum(abs(l.qty_delivered * l.price_unit) for l in money_lines if not l.is_trade_in)
+            net_paid_actual = total_paid - total_change
+            
+            # 2. Goods Value Actuals
+            sell_lines = old_order.order_line.filtered(lambda l: not l.is_trade_in and not l.is_auto_balance and not l.display_type and l.product_id != old_order.company_id.money_product_id)
+            # Note: Do we count Trade-in Goods? 
+            # If Customer gave us Gold (-100). That is Payment.
+            # Currently logic separates "Money" vs "Goods".
+            # If Trade-in is Goods, it should convert to Money equivalent? 
+            # QLV Standard: Trade-in reduces Total.
+            # Balance = (Total Credits) - (Total Debits).
+            # Credits = Money In + Trade-in Goods Received.
+            # Debits = Money Out + Sell Goods Delivered.
+            
+            trade_in_goods = old_order.order_line.filtered(lambda l: l.is_trade_in and not l.is_auto_balance and not l.display_type and l.product_id != old_order.company_id.money_product_id)
+            value_trade_in_received = sum(abs(l.qty_delivered * l.price_unit) for l in trade_in_goods)
+            
+            value_delivered_out = sum(l.qty_delivered * l.price_unit for l in sell_lines)
+            
+            total_credits = net_paid_actual + value_trade_in_received
+            total_debits = value_delivered_out
+            
+            balance = total_credits - total_debits
+            
+            company = old_order.company_id
+            money_prod = company.money_product_id
+            
+            # Case A: SURPLUS (Excess > 0) -> Customer Paid too much.
+            # We credit them on New Order (Trade-in Money).
+            # Limit: We can credit up to the amount required to cover the Transfer? 
+            # Or just credit the whole balance?
+            # User expectation: "Offset corresponding to transferred goods".
+            # If Transfer Value = 200. Surplus = 400. Offset = 200? Or 400?
+            # Safest: Offset matches the Transfer Obligation first.
+            # Actually, standard accounting: Just bring the balance forward.
+            # If Balance is +400. New Order gets -400 (Trade-in). Total Reduces.
+            if balance > 0.01:
+                # Limit offset to transferred value? 
+                # If we transfer 200 of goods. Balance 400.
+                # New Order: Sell 200. Trade-in 200. (Net 0). Leftover 200?
+                # Ideally we transfer FULL Balance.
+                offset_amount = balance # Transfer full surplus
+                
+                offset_vals = {
+                    'order_id': target_order.id,
+                    'product_id': money_prod.id,
+                    'product_uom_qty': 1,
+                    'price_unit': -offset_amount,
+                    'is_trade_in': True,
+                    'settled_order_id': old_order.id,
+                    'name': _("Bù trừ dư: Đơn %s") % old_order.name,
+                    'is_auto_balance': False,
+                    'sequence': 999,
+                }
+                self.env['sale.order.line'].create(offset_vals)
+                old_order.message_post(body=_("Đã chuyển số dư thừa (%s) sang đơn mới") % offset_amount)
+
+            # Case B: DEFICIT (Excess < 0) -> Customer Owes Money.
+            # We charge them on New Order (Sell Money).
+            # e.g. Balance = -300k. New Order gets +300k (Sell).
+            elif balance < -0.01:
+                debt_amount = abs(balance)
+                
+                debt_vals = {
+                    'order_id': target_order.id,
+                    'product_id': money_prod.id,
+                    'product_uom_qty': 1,
+                    'price_unit': debt_amount,
+                    'is_trade_in': False, # SELL (Charge)
+                    'settled_order_id': old_order.id,
+                    'name': _("Truy thu nợ cũ: Đơn %s") % old_order.name,
+                    'is_auto_balance': False,
+                    'sequence': 999,
+                }
+                self.env['sale.order.line'].create(debt_vals)
+                old_order.message_post(body=_("Đã chuyển khoản nợ (%s) sang đơn mới") % debt_amount)
+
+            target_order.message_post(body=_("Đã nhận chuyển giao nghĩa vụ từ đơn cũ %s") % old_order.name)
+            
+            # FORCE AUTO-BALANCE UPDATE
+            # Since lines were created in backend, UI Onchange didn't run.
+            target_order.update_auto_balance_money_db()
+            
+        return True
+
+    def update_auto_balance_money_db(self):
+        """
+        Calculates and updates the Auto-Balance Money Line directly in the Database.
+        Used for backend operations (like Settlement) where Onchange logic is not triggered.
+        """
+        self.ensure_one()
+        if not self.auto_balance_money:
+            return
+
+        company = self.company_id or self.env.company
+        money_product = company.money_product_id
+        rounding_precision = company.currency_id.rounding or 0.001
+        
+        # 1. Identify Goods Lines (Excluding Auto Balance)
+        all_lines = self.order_line
+        goods_lines = all_lines.filtered(
+            lambda l: not l.is_auto_balance and (l.display_type or l.product_id)
+        )
+        
+        # 2. Calculate Balance
+        # Important: Ensure price_subtotal is up-to-date.
+        # If this runs in the same transaction as creation, computed fields *should* be available via ORM cache.
+        grand_total_goods = sum(l.price_subtotal for l in goods_lines if not l.display_type)
+        balance_needed = -grand_total_goods
+        
+        # 3. Manage Money Line
+        current_money_line = all_lines.filtered(lambda l: l.is_auto_balance)
+        has_money_needed = abs(balance_needed) >= rounding_precision
+        
+        if not has_money_needed:
+            if current_money_line:
+                current_money_line.unlink()
+            return
+
+        # Prepare Values
+        vals = {
+            'product_id': money_product.id,
+            'is_auto_balance': True,
+            'sequence': 9999,
+            'product_uom': money_product.uom_id.id,
+        }
+        
+        if balance_needed < 0:
+             # Negative Balance -> Order is Negative Value (Credit/Trade-In Surplus)
+             # Need "Thu tiền về" (Trade-In Money with Negative Price? No, Trade-In is Buy).
+             # Standard Logic: 
+             # Goods subtotal is Negative (Trade In). 
+             # Grand Total Goods = -100.
+             # Balance Needed = -(-100) = +100.
+             # Need +100. 
+             # Wait.
+             # If Trade-In (Customer gives Goods, Value -100).
+             # Payment normally is +100 (Shop Pays Customer).
+             # My Logic:
+             # balance_needed > 0 -> "Chi tiền ra" (Shop Pays).
+             # balance_needed < 0 -> "Thu tiền về" (Customer Pays).
+             
+             # Re-verify calculation:
+             # grand_total_goods = Sum(price_subtotal).
+             # Sell (Pos), TradeIn (Neg).
+             # If Sell 100. Grand Total = 100. Balance Needed = -100 (Customer Pays).
+             # If Balance < 0 -> Customer Pays -> "Thu tiền về".
+             vals.update({
+                 'is_trade_in': True,
+                 'price_unit': -1.0, 
+                 'product_uom_qty': abs(balance_needed),
+                 'name': 'Thu tiền mặt (Tự động)'
+             })
+        else:
+             # Balance > 0 -> Shop Pays -> "Chi tiền ra".
+             vals.update({
+                 'is_trade_in': False,
+                 'price_unit': 1.0, 
+                 'product_uom_qty': abs(balance_needed),
+                 'name': 'Chi tiền mặt (Tự động)'
+             })
+
+        if current_money_line:
+            current_money_line[0].write(vals)
+            if len(current_money_line) > 1:
+                (current_money_line - current_money_line[0]).unlink()
+        else:
+            vals['order_id'] = self.id
+            self.env['sale.order.line'].create(vals)
 
     legacy_transaction_status = fields.Selection([
         ('none', '-'),
@@ -589,12 +1010,21 @@ class SaleOrder(models.Model):
              self.order_line_trade_in = new_buy
 
 
+    def _compute_settled_to_order(self):
+        for order in self:
+            # Search for lines in OTHER orders that reference THIS order
+            linked_lines = self.env['sale.order.line'].search([('settled_order_id', '=', order.id)], limit=1)
+            if linked_lines:
+                order.settled_to_order_id = linked_lines.order_id
+            else:
+                order.settled_to_order_id = False
+
     @api.depends('partner_id')
     def _compute_pending_order_ids(self):
         for order in self:
             if not order.partner_id:
                 order.pending_order_ids = False
-                order.pending_pawn_ids = False
+                # order.pending_pawn_ids = False
                 continue
 
             # Find other orders for the same partner that are NOT fully completed
@@ -618,12 +1048,12 @@ class SaleOrder(models.Model):
                 
             order.pending_order_ids = self.search(domain)
             
-            # Compute Pawn Orders (Active)
-            pawn_domain = [
-                ('partner_id', '=', order.partner_id.id),
-                ('state', 'in', ('draft', 'confirmed')),
-            ]
-            order.pending_pawn_ids = self.env['pawn.order'].search(pawn_domain)
+            # Compute Pawn Orders (Active) -> REMOVED
+            # pawn_domain = [
+            #     ('partner_id', '=', order.partner_id.id),
+            #     ('state', 'in', ('draft', 'confirmed')),
+            # ]
+            # order.pending_pawn_ids = self.env['pawn.order'].search(pawn_domain)
 
 
     def _prepare_trade_in_picking(self):
@@ -666,56 +1096,8 @@ class SaleOrder(models.Model):
                             line.quantity = -line.quantity
         return moves
 
-    def action_confirm(self):
-        # CLEANUP: Remove "Ghost" lines (Empty lines from UI) before Confirming
-        # This prevents "Missing Description (name)" error if user added a line but left it empty.
-        # We check for lines with no Display Type (Section/Note), No Product, and No Name.
-        empty_lines = self.order_line.filtered(lambda l: not l.display_type and not l.product_id and not l.name)
-        if empty_lines:
-            for line in empty_lines: # Added loop as per instruction
-                line.unlink()
-            
-        res = super(SaleOrder, self).action_confirm()
 
-        for order in self:
-            # Find all moves related to trade-in lines from the pickings just created
-            # In Odoo 16, the correct field is 'move_ids_without_package', not 'move_lines'
-            trade_in_moves = order.picking_ids.move_ids_without_package.filtered(
-                lambda m: m.sale_line_id and m.sale_line_id.is_trade_in
-            )
 
-            if not trade_in_moves:
-                continue
-
-            # Find an existing receipt or create a new one for the trade-in items
-            receipt_picking = order.picking_ids.filtered(
-                lambda p: p.picking_type_id.code == 'incoming' and p.state not in ('done', 'cancel')
-            )
-            if not receipt_picking:
-                picking_vals = order._prepare_trade_in_picking()
-                receipt_picking = self.env['stock.picking'].create(picking_vals)
-
-            # Move the trade-in stock moves to the receipt picking and correct their locations
-            # Move the trade-in stock moves to the receipt picking and correct their locations
-            trade_in_moves.write({
-                'picking_id': receipt_picking.id,
-                'location_id': receipt_picking.location_id.id,
-                'location_dest_id': receipt_picking.location_dest_id.id,
-            })
-            
-            # CRITICAL FIX: Explicitly update the move lines to point to the new picking
-            # Standard Odoo might not propagate this change if the moves are already reserved/assigned
-            trade_in_moves.move_line_ids.write({
-                'picking_id': receipt_picking.id,
-                'location_id': receipt_picking.location_id.id,
-                'location_dest_id': receipt_picking.location_dest_id.id,
-            })
-
-            # After moving, if an original delivery order is now empty, cancel it.
-            for picking in order.picking_ids:
-                if picking.picking_type_id.code == 'outgoing' and not picking.move_ids_without_package:
-                    picking.action_cancel()
-        return res
 
     def _compute_picking_counts(self):
         for order in self:

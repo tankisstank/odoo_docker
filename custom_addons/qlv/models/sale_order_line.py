@@ -10,6 +10,15 @@ class SaleOrderLine(models.Model):
     trade_in_price_unit = fields.Float('Trade-in Price (Unit)')
     is_auto_balance = fields.Boolean('Tự động cân bằng', default=False, help="Dòng này được hệ thống tự động tạo ra để cân bằng tiền.")
 
+    # Override for High Precision Display (4 digits)
+    product_uom_qty = fields.Float(digits=(16, 4))
+    
+    # Phase 16: Unique Procurement Group per Line for Granular Pickings
+    procurement_group_id = fields.Many2one('procurement.group', 'Lot/Serial Group', copy=False)
+    
+    # Phase 17: Link to Settled Order (Deferred Locking)
+    settled_order_id = fields.Many2one('sale.order', 'Đơn hàng được thanh toán', readonly=True, copy=False)
+
     @api.onchange('original_product_id')
     def _onchange_original_product(self):
         """Set defaults when Original Product is selected."""
@@ -129,6 +138,9 @@ class SaleOrderLine(models.Model):
             else:
                 line.price_unit = abs(new_price_unit)
 
+            # Update Base Price Display
+            line.price_unit_base = exchange_rate
+
             # Trigger Balancing
             if line.order_id:
                 line.order_id._onchange_balance_money()
@@ -170,6 +182,78 @@ class SaleOrderLine(models.Model):
                 # Restore correct target if for some reason it got affected (though it shouldn't)
                 if line.product_id != current_target_product:
                     line.product_id = current_target_product
+            self._onchange_calculation_master()
+
+    @api.onchange('original_product_id', 'is_trade_in')
+    def _onchange_original_product(self):
+        """
+        Triggered when picking the Original Product (e.g. Old Gold).
+        Logic:
+        1. Auto-fill Purity from Original Product.
+        2. Product Mapping (Phase 15.6 Fix):
+           - Previously forced product_id = original_product_id. This broke Pricing (No Rate).
+           - NEW: Default 'product_id' to "Standard Gold" (e.g. 9999).
+           - This ensures UI shows "Quy đổi: 9999" (with Price) while Stock Move uses Original (via _prepare_procurement).
+        """
+        for line in self:
+            if not line.original_product_id:
+                continue
+            
+            # 1. Purity
+            # 1. Purity
+            # Logic: Only overwrite Purity if it differs significantly from the Product's Standard.
+            # This allows User Input (e.g. 0.9962) to persist even if Product Standard is 0.996.
+            # Threshold: 0.001 (Accept variance for specific variants).
+            if hasattr(line.original_product_id, 'gold_purity_standard'):
+                 standard = line.original_product_id.gold_purity_standard
+                 current = line.gold_purity or 0.0
+                 if abs(current - standard) > 0.001:
+                      line.gold_purity = standard
+            elif line.original_product_id.gold_purity_standard:
+                 line.gold_purity = line.original_product_id.gold_purity_standard
+            
+            # 2. Product Mapping (Restored Logic)
+            # If product_id is empty OR matching Original (reset state),
+            # Try to find the Configured Converted Product (SP Quy đổi Mặc định).
+            # If not configured, fallback to 9999 Search.
+            
+            should_update_target = not line.product_id or line.product_id == line.original_product_id
+            
+            if should_update_target:
+                # A. Check Configuration (High Priority)
+                # Note: conversion_target_id is on Product Template, but mapped via product_tmpl_id
+                target_product = line.original_product_id.product_tmpl_id.conversion_target_id
+                
+                # B. Fallback Heuristic
+                if not target_product:
+                     target_product = self.env['product.product'].search([
+                        ('name', 'ilike', '3 số'), # Search for 999 or 3 số
+                        ('categ_id.name', '!=', 'Tiền')
+                    ], limit=1)
+                
+                if target_product:
+                     line.product_id = target_product
+            
+                if target_product:
+                     line.product_id = target_product
+            
+            # 3. UOM
+            if line.original_product_id.uom_id:
+                 line.original_uom_id = line.original_product_id.uom_id
+
+            # 4. Price Compensation (Tiền Công / Variant Extra Price)
+            # Auto-fill 'Bù giá' from the Variant's 'price_extra'
+            # Note: price_extra is the difference from Template List Price.
+            # If user wants absolute value, they should check configuration. 
+            # Here we just map it.
+            price_extra = line.original_product_id.price_extra or 0.0
+            # Cleaned
+
+            line.price_compensation = price_extra
+            
+            # 5. Trigger Recalculation
+            # Ensure any product change immediately updates prices/quantities
+            line._onchange_calculation_master()
 
     @api.onchange('product_id','is_trade_in')
     def _onchange_is_trade_in_trigger_sort(self):
@@ -184,6 +268,26 @@ class SaleOrderLine(models.Model):
             # Explicit call to parent onchange for full re-balancing and cleanup
             self.order_id._onchange_balance_money()
 
+
+    @api.depends('product_id', 'is_trade_in')
+    def _compute_route_id(self):
+        """
+        Override: Assign 'Trade-in (Receipt)' Route to Trade-in lines.
+        Ensures that 'Buy' lines generate Incoming Pickings (Receipts) 
+        instead of Outgoing (Delivery).
+        """
+        # 1. Standard Logic (Assigns MTO or Deliver rule)
+        super(SaleOrderLine, self)._compute_route_id()
+        
+        # 2. Trade-in Logic
+        # Search by name for the route we created in setup script.
+        # Ideally we should use External ID but we created it via Python.
+        trade_in_route = self.env['stock.route'].search([('name', '=', 'Nhập từ Khách (Trade-in)')], limit=1)
+        
+        if trade_in_route:
+            for line in self:
+                if line.is_trade_in:
+                    line.route_id = trade_in_route
 
     @api.depends('move_ids.state', 'move_ids.scrapped', 'move_ids.product_uom_qty', 'move_ids.product_uom')
     def _compute_qty_delivered(self):
@@ -244,3 +348,72 @@ class SaleOrderLine(models.Model):
             'price_compensation': self.price_compensation,
         })
         return values
+
+    def _action_launch_stock_rule(self, previous_product_uom_qty=False):
+        """
+        Phase 16: Override to Create UNIQUE Procurement Group per Line.
+        This forces Odoo to create separate Stock Pickings for each Sale Order Line.
+        Original Logic: Uses line.order_id.procurement_group_id (Shared).
+        New Logic: Creates new group for each line if not exists.
+        """
+        """
+        Phase 16: Override to Create UNIQUE Procurement Group per Line.
+        Force Sequential Execution to prevent Picking Merging.
+        """
+        procurements = []
+        for line in self:
+            line = line.with_company(line.company_id)
+            if line.state != 'sale' or not line.product_id.type in ('consu', 'product'):
+                continue
+            
+            # Retrieve previous qty
+            qty = line.product_uom_qty - (previous_product_uom_qty.get(line.id, 0.0) if previous_product_uom_qty else 0.0)
+            
+            # Using imported float_compare is cleaner but let's stick to simple
+            if line.product_uom.rounding:
+                if abs(qty) < line.product_uom.rounding:
+                    continue
+            else:
+                 if qty == 0:
+                     continue
+
+            # --- Start Custom Logic ---
+            # Create Unique Group ID
+            group_id = line.procurement_group_id
+            if not group_id:
+                # Name pattern: SO/LineSeq-Product
+                group_name = u"{} / {} - {}".format(line.order_id.name, line.sequence, line.product_id.name)
+                group_vals = {
+                    'name': group_name,
+                    'move_type': line.order_id.picking_policy,
+                    'sale_id': line.order_id.id,
+                    'partner_id': line.order_id.partner_shipping_id.id,
+                }
+                group_id = self.env['procurement.group'].create(group_vals)
+                line.procurement_group_id = group_id
+            # --- End Custom Logic ---
+
+            values = line._prepare_procurement_values(group_id=group_id)
+            product_qty = line.product_uom_qty - (previous_product_uom_qty.get(line.id, 0.0) if previous_product_uom_qty else 0.0)
+
+            line_uom = line.product_uom
+            # quant_uom = line.product_id.uom_id
+            procurement_uom = line_uom
+            
+            # Create Procurement
+            # Note: We use string references if we don't have direct imports. 
+            # But self.env creates objects locally.
+            # Force Unique Origin to ensure separation (Include Sequence for Same-Product lines)
+            unique_origin = u"{} / {} - {}".format(line.order_id.name, line.sequence, line.product_id.name)
+            
+            procurements.append(self.env['procurement.group'].Procurement(
+                line.product_id, product_qty, procurement_uom,
+                line.order_id.partner_shipping_id.property_stock_customer,
+                line.name, unique_origin, line.order_id.company_id, values))
+        
+        if procurements:
+            # Force Sequential Execution to prevent Picking Merging
+            for proc in procurements:
+                 self.env['procurement.group'].run([proc])
+            
+        return True

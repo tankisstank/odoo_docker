@@ -30,7 +30,7 @@
         'wizards/debt_offset_wizard_view.xml',
         'wizards/debt_report_wizard_view.xml',
         'reports/debt_report.xml',
-        'views/pawn_order_view.xml',
+        # 'views/pawn_order_view.xml',
         'views/menu_view.xml',
         'views/report_sale_order.xml',
         'views/sale_order_report_templates.xml',

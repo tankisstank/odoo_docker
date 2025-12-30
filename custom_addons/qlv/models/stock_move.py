@@ -40,3 +40,45 @@ class StockMove(models.Model):
                         # Trigger tính lại giá (vì write không tự gọi onchange)
                         move.sale_line_id._onchange_price_logic()
         return res
+
+    def _search_picking_for_assignation(self):
+        """
+        Phase 18 Fix: Enforce Strict Origin Matching to prevent Merging.
+        Override to ensure Move with Unique Origin matches only Picking with same Unique Origin.
+        For Trade-in lines, we FORCE a new picking (return empty search) to ensure splitting.
+        """
+        # Sledgehammer: If Trade-in, NEVER merge. Force new picking.
+        if self.is_trade_in:
+             return self.env['stock.picking']
+
+        res = super(StockMove, self)._search_picking_for_assignation()
+        if self.origin:
+             res = res.filtered(lambda p: p.origin == self.origin)
+        
+        # Enforce Group ID matching (Standard Incoming often ignores this)
+        if self.group_id:
+             res = res.filtered(lambda p: p.group_id == self.group_id)
+             
+        return res
+
+    def _create_picking(self):
+        """
+        Phase 18 Fix: Force Unique Origin on Picking immediately after creation.
+        Allows Splitting logic to work correctly by ensuring Picking has Unique Origin.
+        """
+        res = super(StockMove, self)._create_picking()
+        if self.origin and res:
+             # Iterate just in case, though standard logic usually creates 1 per move call if sequential
+             for picking in res:
+                 picking.write({'origin': self.origin})
+        return res
+
+    def _get_new_picking_values(self):
+        """
+        Phase 18 Fix: Propagate Unique Origin to Picking.
+        Ensure the created picking inherits the Move's unique origin.
+        """
+        vals = super(StockMove, self)._get_new_picking_values()
+        if self.origin:
+            vals['origin'] = self.origin
+        return vals
