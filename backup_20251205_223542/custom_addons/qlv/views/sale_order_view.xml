@@ -54,7 +54,7 @@
                     <attribute name="string">Bạn hàng</attribute>
                 </field>
                 <field name="partner_id" position="after">
-                    <field name="note" string="Ghi chú 123" optional="show"/>
+                    <field name="note" string="Ghi chú" optional="show"/>
                     <field name="trade_in_summary" string="Hàng Nhập" optional="show"/>
                     <field name="sell_summary" string="Hàng Xuất" optional="show"/>
                     <field name="trade_in_total" string="Tiền Nhập" sum="Total Trade-in" optional="show"/>

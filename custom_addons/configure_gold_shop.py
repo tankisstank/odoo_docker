@@ -503,7 +503,7 @@ def _configure_decimal_precision(uid, models):
         if precision_ids:
             prec = precision_ids[0]
             current_digits = prec['digits']
-            target_digits = 3
+            target_digits = 4
             
             if current_digits != target_digits:
                 # Odoo returns digits as integer for 'digits' field usually? Or float? 
@@ -518,6 +518,97 @@ def _configure_decimal_precision(uid, models):
             print("✗ Không tìm thấy cấu hình 'Product Unit of Measure'")
     except Exception as e:
         print(f"✗ Lỗi cấu hình Precision: {e}")
+
+
+def _configure_tradein_route(uid, models):
+    """
+    Cấu hình Route 'Nhập từ Khách (Trade-in)' để tự động sinh phiếu nhập kho.
+    """
+    print("\n=== Cấu hình Route Trade-in (Nhập hàng) ===")
+    try:
+        # 1. Find Warehouse
+        warehouse_id = models.execute_kw(DB_NAME, uid, PASSWORD, 'stock.warehouse', 'search', [[]], {'limit': 1})[0]
+        wh = models.execute_kw(DB_NAME, uid, PASSWORD, 'stock.warehouse', 'read', [warehouse_id], {'fields': ['code', 'partner_id', 'lot_stock_id', 'in_type_id']})[0]
+        
+        # 2. Find/Create Route
+        route_name = "Nhập từ Khách (Trade-in)"
+        existing_routes = models.execute_kw(DB_NAME, uid, PASSWORD, 'stock.route', 'search_read', [[('name', '=', route_name)]], {'fields': ['id', 'name']})
+        
+        route_id = None
+        if existing_routes:
+            route_id = existing_routes[0]['id']
+            print(f"✓ Route '{route_name}' đã tồn tại")
+        else:
+            route_id = models.execute_kw(DB_NAME, uid, PASSWORD, 'stock.route', 'create', [{
+                'name': route_name,
+                'sale_selectable': True, # Allow selecting on SO Line
+                'product_selectable': True,
+                'warehouse_selectable': True,
+                'warehouse_ids': [(4, warehouse_id)],
+            }])
+            print(f"✓ Đã tạo Route: {route_name}")
+
+        # 3. Find/Create Rule
+        cust_loc_id = models.execute_kw(DB_NAME, uid, PASSWORD, 'stock.location', 'search', [[('usage', '=', 'customer')]], {'limit': 1})[0]
+        rule_name = f"{wh['code']}: Trade-in Receipt (Customer -> Stock)"
+        
+        existing_rules = models.execute_kw(DB_NAME, uid, PASSWORD, 'stock.rule', 'search_read', [[('route_id', '=', route_id)]], {'fields': ['id']})
+        
+        if existing_rules:
+            print(f"✓ Rule đã tồn tại cho Route")
+        else:
+            rule_id = models.execute_kw(DB_NAME, uid, PASSWORD, 'stock.rule', 'create', [{
+                'name': rule_name,
+                'route_id': route_id,
+                'action': 'pull', # Pull from source
+                'picking_type_id': wh['in_type_id'][0], # Receipt Operation Type
+                'location_src_id': cust_loc_id, # From Customer
+                'location_dest_id': wh['lot_stock_id'][0], # To Stock
+                'procure_method': 'make_to_stock',
+                'warehouse_id': warehouse_id,
+                'propagate_cancel': True,
+            }])
+            print(f"✓ Đã tạo Rule: {rule_name}")
+            
+    except Exception as e:
+        print(f"✗ Lỗi cấu hình Route Trade-in: {e}")
+
+
+
+def _configure_product_routes(uid, models):
+    """
+    Cấu hình Route mặc định cho tất cả sản phẩm kho.
+    Gán route 'Buy' (và MTO nếu có) để đảm bảo tạo phiếu kho.
+    """
+    print("\n=== Cấu hình Route cho Sản phẩm ===")
+    try:
+        # Find Buy Route
+        buy_route = models.execute_kw(DB_NAME, uid, PASSWORD, 'stock.route', 'search_read', [[('name', 'ilike', 'Buy')]], {'fields': ['id', 'name'], 'limit': 1})
+        buy_id = buy_route[0]['id'] if buy_route else False
+        
+        # MTO
+        mto_route = models.execute_kw(DB_NAME, uid, PASSWORD, 'stock.route', 'search_read', [[('name', 'ilike', 'MTO')]], {'fields': ['id', 'name'], 'limit': 1})
+        mto_id = mto_route[0]['id'] if mto_route else False
+
+        new_routes = []
+        if buy_id: new_routes.append(buy_id)
+        if mto_id: new_routes.append(mto_id)
+        
+        if not new_routes:
+             print("✗ Không tìm thấy Route 'Buy' hoặc 'MTO'")
+             return
+
+        # Find Products
+        prod_ids = models.execute_kw(DB_NAME, uid, PASSWORD, 'product.product', 'search', [[('type', '=', 'product')]])
+        if prod_ids:
+             # Add routes
+             models.execute_kw(DB_NAME, uid, PASSWORD, 'product.product', 'write', [prod_ids, {'route_ids': [(4, rid) for rid in new_routes]}])
+             print(f"✓ Đã cập nhật Route ({[r['name'] for r in (buy_route or []) + (mto_route or [])]}) cho {len(prod_ids)} sản phẩm")
+        else:
+             print("- Không có sản phẩm nào cần cập nhật")
+
+    except Exception as e:
+        print(f"✗ Lỗi cập nhật SP Route: {e}")
 
 
 def main():
@@ -548,6 +639,12 @@ def main():
     
     # 7. Cấu hình Precision
     _configure_decimal_precision(uid, models)
+
+    # 8. Cấu hình Route Trade-in
+    _configure_tradein_route(uid, models)
+
+    # 9. Cấu hình Route Sản phẩm (Buy/MTO)
+    _configure_product_routes(uid, models)
 
     print("\n=== CẤU HÌNH HOÀN TẤT ===")
     print("Hệ thống đã sẵn sàng!")

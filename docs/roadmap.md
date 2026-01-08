@@ -40,3 +40,12 @@
 - [x] Thêm thông tin của cửa hàng vào footer của các email, pdf mẫu
 
 ### 6. Quản lý công nợ
+- [ ] Xây dựng Verification Plan để so sánh/đánh giá hiệu quả của hai phương pháp tính nợ:
+    *   **Option A (Code):** Dựa trên `sale.order.line` pending.
+    *   **Option B (Docs):** Dựa trên `stock.move` history.
+- [ ] User Review & Decision.
+
+### 7. Module Báo cáo Lãi/Lỗ Hàng ngày (Daily P&L) - [NEW]
+- [ ] **Mục tiêu:** Tính toán lãi lỗ hàng ngày dựa trên sự chênh lệch giá trị tài sản.
+- [ ] **Công thức (Dự kiến):** `P&L = (Giá trị Tồn kho Cuối ngày + Tiền mặt Cuối ngày) - (Giá trị Tồn kho Đầu ngày + Tiền mặt Đầu ngày) + (Phát sinh Nợ/Có khác)`.
+- [ ] **Yêu cầu:** Ghi nhận Snapshot tồn kho tại thời điểm chốt sổ.

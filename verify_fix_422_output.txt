@@ -1,0 +1,7 @@
+Connected as UID 2
+
+--- VERIFYING GUARD CLAUSE: QTU/00422 ---
+Attempting Settle from QTU/00422 to New Order (ID 429)...
+SUCCESS: Guard Clause Triggered (Redirect returned).
+ - Res Model: sale.order
+ - Res ID: 419

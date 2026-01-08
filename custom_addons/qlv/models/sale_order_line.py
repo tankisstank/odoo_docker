@@ -280,10 +280,12 @@ class SaleOrderLine(models.Model):
         super(SaleOrderLine, self)._compute_route_id()
         
         # 2. Trade-in Logic
-        # Search by name for the route we created in setup script.
-        # Ideally we should use External ID but we created it via Python.
-        trade_in_route = self.env['stock.route'].search([('name', '=', 'Nhập từ Khách (Trade-in)')], limit=1)
-        
+        # Robust Search: Use ilike to handle translation naming issues
+        trade_in_route = self.env['stock.route'].search([('name', 'ilike', 'Nhập từ Khách')], limit=1)
+        if not trade_in_route:
+             # Fallback English
+             trade_in_route = self.env['stock.route'].search([('name', 'ilike', 'Trade-in')], limit=1)
+
         if trade_in_route:
             for line in self:
                 if line.is_trade_in:
@@ -303,6 +305,25 @@ class SaleOrderLine(models.Model):
 
     def _prepare_invoice_line(self, **optional_values):
         res = super(SaleOrderLine, self)._prepare_invoice_line(**optional_values)
+        
+        # PHASE 20: Converted Value for Invoicing
+        # Logic: 
+        # - Stock tracks Physical Quantity (Original Weight).
+        # - Invoice should use Converted Quantity (Net Weight * Purity) to match Price Unit.
+        # - We calculate the Conversion Ratio from the SO Line definition.
+        
+        # Only apply if this is a Trade-in/Conversion line with physical weight
+        if self.is_trade_in and self.original_weight > 0 and self.product_uom_qty > 0:
+            # Calculate Effective Conversion Ratio (Converted / Physical)
+            # Use 'product_uom_qty' (Converted) vs 'original_weight' (Physical) defined on the line.
+            # This accounts for Purity, Loss, and any other factors.
+            conversion_ratio = self.product_uom_qty / self.original_weight
+            
+            # Apply Ratio to the Quantity being invoiced
+            # The 'quantity' in res comes from qty_to_invoice (Physical based on Delivery)
+            if 'quantity' in res:
+                res['quantity'] = res['quantity'] * conversion_ratio
+                
         # Propagate Conversion Data to Invoice Line (Account Move Line)
         res.update({
             'is_trade_in': self.is_trade_in,

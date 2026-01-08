@@ -16,9 +16,18 @@ class StockMove(models.Model):
         for vals in vals_list:
             if 'sale_line_id' in vals:
                 sale_line = self.env['sale.order.line'].browse(vals['sale_line_id'])
-                if sale_line.is_trade_in:
-                    vals['gold_purity'] = sale_line.gold_purity
-                    vals['price_compensation'] = sale_line.price_compensation
+                # ALWAYS Copy Conversion Data if available (Trade-in OR Sell)
+                # Logic: If line has original info, move should have it too.
+                vals['gold_purity'] = sale_line.gold_purity
+                vals['price_compensation'] = sale_line.price_compensation
+                vals['original_weight'] = sale_line.original_weight
+                vals['loss_weight'] = sale_line.loss_weight
+                
+                if sale_line.original_product_id:
+                     vals['original_product_id'] = sale_line.original_product_id.id
+                if sale_line.original_uom_id:
+                     vals['original_uom_id'] = sale_line.original_uom_id.id
+                     
         return super(StockMove, self).create(vals_list)
 
     def write(self, vals):

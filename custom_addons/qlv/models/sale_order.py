@@ -456,23 +456,38 @@ class SaleOrder(models.Model):
                     'product_uom_qty': abs(pending_qty),
                     'product_uom': line.product_uom.id,
                     'price_unit': line.price_unit, # PRESERVE PRICE
-                    'original_weight': line.original_weight,
                     'gold_purity': line.gold_purity,
                     'settled_order_id': old_order.id,
                     'sequence': 900, 
                     'is_auto_balance': False, 
+                    
+                    # Fix 2: Propagate Original UoM & Calculate Pending Original Weight
+                    'original_uom_id': line.original_uom_id.id,
                 }
+                
+                # Calculate Proportional Original Weight
+                # pending_weight = total_weight * (pending_qty / total_qty)
+                if line.product_uom_qty > 0 and line.original_weight > 0:
+                     ratio = abs(pending_qty) / line.product_uom_qty
+                     vals['original_weight'] = line.original_weight * ratio
+                else:
+                     vals['original_weight'] = line.original_weight
+
+                # Fix 1: Use Original Product Name in Description
+                product_name = line.original_product_id.name if line.original_product_id else line.product_id.name
                 
                 if not line.is_trade_in:
                     vals.update({
                         'is_trade_in': False,
-                        'name': _("Chuyển giao hàng: %s (Từ %s)") % (line.name, old_order.name)
+                        # Use Original Product Name
+                        'name': _("Chuyển giao hàng: %s (Từ %s)") % (product_name, old_order.name)
                     })
                     total_transferred_sell_value += (vals['product_uom_qty'] * vals['price_unit'])
                 else:
                     vals.update({
                         'is_trade_in': True,
-                        'name': _("Chuyển thu hồi: %s (Từ %s)") % (line.name, old_order.name)
+                        # Use Original Product Name
+                        'name': _("Chuyển thu hồi: %s (Từ %s)") % (product_name, old_order.name)
                     })
                 
                 self.env['sale.order.line'].create(vals)
