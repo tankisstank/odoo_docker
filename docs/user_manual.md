@@ -54,6 +54,8 @@ Nếu không dùng script, bạn cần thực hiện các bước sau:
     - Giá mua lại sẽ tự động lấy từ giá Cost của sản phẩm (có thể sửa nếu cần).
 4.  **Kiểm tra tổng tiền:** Hệ thống sẽ tự động trừ tiền hàng khách bán lại khỏi tổng tiền khách phải trả.
 5.  **Confirm:** Xác nhận đơn hàng. Hệ thống sẽ tạo 1 phiếu xuất kho (giao hàng mới) và 1 phiếu nhập kho (nhận hàng cũ).
+    -   *Lưu ý:* Hệ thống sẽ tự động hiển thị nhãn **"Đơn Nhập" (nhap)** nếu giá trị mua lớn hơn giá trị bán, và nược lại là **"Đơn Xuất" (xuat)**.
+
 
 ## 5. Hướng dẫn Nghiệp vụ Cầm cố / Gửi sổ (Tích hợp)
 *Lưu ý: Tính năng này hiện được thực hiện trực tiếp trên giao diện Đơn bán hàng.*
@@ -84,6 +86,7 @@ Khi khách muốn tất toán một đơn hàng cũ (đang nợ/cầm cố) đ�
 4.  Hệ thống sẽ:
     -   Tự động khóa đơn cũ (Trạng thái chuyển sang "ĐÃ CHUYỂN ĐƠN").
     -   Đưa toàn bộ hàng hóa của đơn cũ sang đơn mới.
+    -   *Lưu ý:* Các dòng hàng chuyển sang sẽ hiển thị **Tên hàng gốc** trong phần mô tả (ví dụ "Chuyển thu hồi: Vàng ta 777...") để dễ đối chiếu.
 5.  Trên đơn mới, bạn tiếp tục thêm/bớt các sản phẩm mua bán khác.
 6.  Số tiền chênh lệch cuối cùng sẽ được tính toán tự động.
 7.  **Lưu và Xác nhận** đơn mới để hoàn tất giao dịch.

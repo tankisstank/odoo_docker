@@ -51,6 +51,17 @@ Dưới đây là danh sách các yêu cầu chức năng chi tiết cho hệ th
     -   Hệ thống tự động sinh dòng "Tiền mặt" cuối cùng để cân bằng đơn hàng.
     -   **Tách biệt:** Tiền nhập tay (Manual VND) được coi là hàng hóa/trade-in bình thường.
     -   **Đặt tên thông minh:** "Thu tiền mặt (Tự động)" (Nếu khách trả thêm) hoặc "Chi tiền mặt (Tự động)" (Nếu shop trả lại khách).
+-   **Cơ chế Tính lóa Đơn hàng & Kho (New Logic):**
+    -   **Kho (Inventory):** Luôn ghi nhận theo **Số lượng/Trọng lượng Thực tế (Physical)**. 
+        -   Ví dụ: Nhập 1 cây vàng ta 777 -> Kho tăng 1 cây vàng ta.
+        -   Trọng lượng Gốc (Original Weight) được bảo lưu chính xác trên phiếu kho.
+    -   **Hóa đơn (Invoice):** Tính tiền dựa trên **Giá trị Quy đổi (Converted Value)**.
+        -   Hệ thống tự động quy đổi trọng lượng thực tế sang trọng lượng chuẩn (Vàng 4 số) để tính tổng tiền trên hóa đơn.
+        -   Giúp khớp tiền ngay cả khi có chênh lệch nhỏ về trọng lượng thực tế.
+-   **Phân loại Legacy (Đơn Nhập / Đơn Xuất):**
+    -   Hệ thống tự động dán nhãn loại đơn hàng dựa trên giá trị giao dịch:
+        -   **Đơn Xuất (xuat):** Nếu tổng giá trị Bán > Tổng giá trị Mua (Shop bán hàng).
+        -   **Đơn Nhập (nhap):** Nếu tổng giá trị Mua > Tổng giá trị Bán (Shop thu mua/trade-in).
 -   **Kiểm soát Trạng thái & Hủy đơn (Locking & Super Cancel):**
     -   **Khóa đơn (Locking):** Đơn hàng ở trạng thái "Đã giao dịch" (Done/Invoiced) sẽ bị khóa chỉnh sửa (Readonly) để bảo toàn dữ liệu.
     -   **Hủy đơn siêu cấp (Super Cancel):**
@@ -61,6 +72,7 @@ Dưới đây là danh sách các yêu cầu chức năng chi tiết cho hệ th
     -   Khi Confirm, hệ thống tự động tách các dòng hàng thành các phiếu kho riêng biệt:
         -   Hàng Bán -> Phiếu Xuất (Delivery Order).
         -   Hàng Mua/Trade-in -> Phiếu Nhập (Receipt).
+        -   *Cải tiến:* Hàng mua (Trade-in) luôn được định tuyến đúng vào quy trình **"Nhập từ Khách"**, tránh nhầm lẫn thành xuất hàng.
 -   **Thanh toán Bù trừ / Tất toán đơn cũ (Order Settlement):**
     -   **Mục đích:** Khi khách hàng muốn tất toán một đơn hàng cũ (đang treo, đang cầm cố) để chuyển sang đơn hàng mới hoặc trả tiền.
     -   **Cơ chế "Chuyển Đơn" (Order Transfer):**
@@ -70,7 +82,7 @@ Dưới đây là danh sách các yêu cầu chức năng chi tiết cho hệ th
             1.  **Hủy phiếu kho treo** của đơn cũ (nếu chưa hoàn thành).
             2.  **Khóa đơn cũ** (chuyển trạng thái "Đã giao dịch/Completed").
             3.  **Chuyển toàn bộ hàng hóa & nghĩa vụ tài chính** dở dang sang Đơn Mới.
-            4.  Tại Đơn Mới, các dòng này xuất hiện dưới dạng Trade-in (Thu về) hoặc Bán ra.
+            4.  **Bảo toàn thông tin gốc:** Dòng chuyển sang sẽ giữ nguyên Tên hàng gốc và Trọng lượng gốc để tạo phiếu kho chính xác trên đơn mới.
             5.  Dòng tiền cân bằng được tính toán lại để chốt số tiền cuối cùng khách cần trả/nhận.
 
 

@@ -140,7 +140,7 @@ class SaleOrder(models.Model):
 
 
     pending_order_ids = fields.One2many('sale.order', compute='_compute_pending_order_ids', string='Đơn hàng chưa hoàn thành')
-    # pending_pawn_ids = fields.One2many('pawn.order', compute='_compute_pending_order_ids', string='Đơn Cầm cố đang hiệu lực')
+
     auto_balance_money = fields.Boolean('Tự động thanh toán Tiền mặt', default=True, help="Nếu bật, hệ thống sẽ tự động thêm dòng Tiền mặt để cân bằng đơn hàng về 0.")
 
     # Status Link to New Order (Forward Link)
@@ -704,17 +704,17 @@ class SaleOrder(models.Model):
                 if not sell_lines and not buy_lines:
                     order.legacy_type = False
                 elif is_sell_dominant:
-                    order.legacy_type = 'nhap' # Khách mua hàng -> Shop Nhập yêu cầu? No, User said: Sell -> Nhập (Khách thiếu)
+                    order.legacy_type = 'xuat' # Shop Bán -> Đơn Xuất
                 else:
-                    order.legacy_type = 'xuat' # Khách bán hàng -> Shop Xuất tiền? User said: Buy -> Xuất (Khách dư)
+                    order.legacy_type = 'nhap' # Shop Mua -> Đơn Nhập
             else:
                 # Contract Stage (sale, done)
                 if not sell_lines and not buy_lines:
                     order.legacy_type = False
                 elif is_sell_dominant:
-                    order.legacy_type = 'hdkb' # Hợp đồng Khách Bán (Khách mua của mình) -> Terminology "Khách Bán" is confusing but User insisted: "Dòng hàng bán -> HĐKB"
+                    order.legacy_type = 'hdkm'  # Hợp đồng Khách Mua (Mình mua của khách) -> Terminology "HĐKM"
                 else:
-                    order.legacy_type = 'hdkm' # Hợp đồng Khách Mua (Mình mua của khách) -> Terminology "HĐKM"
+                    order.legacy_type = 'hdkb'  # Hợp đồng Khách Bán (Khách mua của mình) -> Terminology "Khách Bán" is confusing but User insisted: "Dòng hàng bán -> HĐKB"
 
     @api.depends('order_line.qty_delivered', 'order_line.price_subtotal', 'amount_total', 'state')
     def _compute_legacy_transaction_status(self):
