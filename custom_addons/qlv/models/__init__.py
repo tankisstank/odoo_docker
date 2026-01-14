@@ -12,3 +12,4 @@ from . import stock_picking
 from . import mail_render_mixin
 from . import res_config_settings
 from . import stock_rule
+from . import stock_balance

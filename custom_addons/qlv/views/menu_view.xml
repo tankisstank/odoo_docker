@@ -18,8 +18,11 @@
     
     <menuitem id="menu_gold_debt_offset" name="Cấn trừ Công nợ" parent="menu_gold_debt_root" sequence="30" action="action_gold_debt_offset_wizard"/>
 
+    <!-- Top Level Menu for Report -->
+    <menuitem id="menu_gold_report_root" name="Báo cáo tồn kho" sequence="20"/>
 
-
+    <!-- Sub Menus Report -->
+    <menuitem id="menu_qlv_stock_balance_report" name="Báo cáo Tổng hợp (X-N-T)" parent="menu_gold_report_root" sequence="20" action="action_qlv_stock_balance_report"/>
     <!-- Configuration Menu -->
     <menuitem id="menu_qlv_configuration" name="Cấu hình" parent="sale.sale_menu_root" sequence="100"/>
     <menuitem id="menu_qlv_settings" name="Thiết lập Vàng" parent="menu_qlv_configuration" sequence="10" action="action_qlv_config_settings"/>

@@ -27,6 +27,7 @@
         'views/account_move_view.xml',
         'views/stock_picking_view.xml',
         'views/res_partner_view.xml',
+        'views/stock_balance_view.xml',
         'wizards/debt_offset_wizard_view.xml',
         'wizards/debt_report_wizard_view.xml',
         'reports/debt_report.xml',

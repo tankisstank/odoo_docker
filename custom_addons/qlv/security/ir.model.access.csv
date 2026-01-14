@@ -2,4 +2,6 @@ id,name,model_id:id,group_id:id,perm_read,perm_write,perm_create,perm_unlink
 access_gold_debt_offset_wizard,gold.debt.offset.wizard,model_gold_debt_offset_wizard,base.group_user,1,1,1,1
 access_gold_debt_report_wizard,gold.debt.report.wizard,model_gold_debt_report_wizard,base.group_user,1,1,1,1
 access_product_price_history_user,product.price.history user,model_product_price_history,base.group_user,1,1,1,1
-
+access_qlv_stock_balance,qlv.stock.balance user,model_qlv_stock_balance,base.group_user,1,1,1,1
+access_qlv_stock_balance_line,qlv.stock.balance.line user,model_qlv_stock_balance_line,base.group_user,1,1,1,1
+access_qlv_stock_balance_summary,qlv.stock.balance.summary user,model_qlv_stock_balance_summary,base.group_user,1,1,1,1
