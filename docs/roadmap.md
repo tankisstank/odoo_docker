@@ -45,7 +45,16 @@
     *   **Option B (Docs):** Dựa trên `stock.move` history.
 - [ ] User Review & Decision.
 
-### 7. Module Báo cáo Lãi/Lỗ Hàng ngày (Daily P&L) - [NEW]
-- [ ] **Mục tiêu:** Tính toán lãi lỗ hàng ngày dựa trên sự chênh lệch giá trị tài sản.
-- [ ] **Công thức (Dự kiến):** `P&L = (Giá trị Tồn kho Cuối ngày + Tiền mặt Cuối ngày) - (Giá trị Tồn kho Đầu ngày + Tiền mặt Đầu ngày) + (Phát sinh Nợ/Có khác)`.
-- [ ] **Yêu cầu:** Ghi nhận Snapshot tồn kho tại thời điểm chốt sổ.
+### 7. Module Báo cáo Lãi/Lỗ Hàng ngày (Daily P&L) - [DONE]
+- [x] **Model `qlv.stock.balance`:** Báo cáo tổng hợp với state (draft/confirmed)
+- [x] **Tính toán P&L:** `Lãi/Lỗ = (Hàng CK + Tiền CK) - (Hàng ĐK + Tiền ĐK)` cho tài sản Shop
+- [x] **Tách biệt:**
+    *   **Shop:** Tài sản tại quầy (tính Lãi/Lỗ chính)
+    *   **Hàng gửi sổ (Pawn):** Hiển thị riêng, không tính vào P&L Shop
+    *   **Công nợ khách:** Hiển thị riêng, không tính vào P&L Shop
+- [x] **Chốt sổ thủ công:** Nút "Chốt sổ" để khóa báo cáo (chỉ Admin mở lại được)
+- [x] **Tên báo cáo tự động:** Format `BC DD/MM/YYYY` hoặc `BC DD/MM - DD/MM/YYYY`
+- [x] **Views:** Form view với 3 tabs (P&L, Chi tiết, Tổng hợp nhóm) + Tree view danh sách
+- [x] **Test Cases:** 6/6 passed (tạo, cập nhật, chốt sổ, chặn sửa, mở lại, tên nhiều ngày)
+- [x] **Test Giao dịch thực tế:** Script giả lập mua/bán/đổi cũ lấy mới
+- [ ] **Report PDF:** Mẫu in báo cáo Lãi/Lỗ (TODO)

@@ -1,4 +1,5 @@
 from odoo import models, fields, api, _
+from odoo.exceptions import UserError
 from datetime import timedelta
 import logging
 
@@ -7,12 +8,20 @@ _logger = logging.getLogger(__name__)
 class QlvStockBalance(models.Model):
     _name = 'qlv.stock.balance'
     _description = 'Stock & P&L Balance Report'
-    _order = 'create_date desc'
+    _order = 'date_from desc, create_date desc'
 
     name = fields.Char(string='Report Ref', required=True, copy=False, readonly=True, index=True, default=lambda self: _('New'))
     
     date_from = fields.Date(string='From Date', required=True, default=fields.Date.context_today)
     date_to = fields.Date(string='To Date', required=True, default=fields.Date.context_today)
+    
+    state = fields.Selection([
+        ('draft', 'Đang soạn'),
+        ('confirmed', 'Đã chốt sổ'),
+    ], string='Trạng thái', default='draft', readonly=True)
+    
+    confirmed_date = fields.Datetime(string='Ngày chốt', readonly=True)
+    confirmed_by = fields.Many2one('res.users', string='Người chốt', readonly=True)
     
     filter_type = fields.Selection([
         ('all', 'Tất cả'),
@@ -27,7 +36,27 @@ class QlvStockBalance(models.Model):
 
     user_id = fields.Many2one('res.users', string='Created By', default=lambda self: self.env.user, readonly=True)
     
-    # P&L Summary Fields
+    # === SHOP P&L (Tài sản Shop - Tính Lãi/Lỗ chính) ===
+    shop_opening_stock_value = fields.Float(string='ĐK Hàng (Shop)', compute='_compute_summary', store=False)
+    shop_closing_stock_value = fields.Float(string='CK Hàng (Shop)', compute='_compute_summary', store=False)
+    shop_opening_cash = fields.Float(string='ĐK Tiền (Shop)', compute='_compute_summary', store=False)
+    shop_closing_cash = fields.Float(string='CK Tiền (Shop)', compute='_compute_summary', store=False)
+    shop_total_opening = fields.Float(string='Tổng ĐK (Shop)', compute='_compute_summary', store=False)
+    shop_total_closing = fields.Float(string='Tổng CK (Shop)', compute='_compute_summary', store=False)
+    
+    # P&L Result
+    profit_loss = fields.Float(string='Lãi/Lỗ', compute='_compute_summary', store=False, 
+                               help="Lãi (+) / Lỗ (-) = Tổng CK - Tổng ĐK")
+    
+    # === PAWN (Hàng gửi sổ - Tách biệt) ===
+    pawn_opening_value = fields.Float(string='ĐK Hàng gửi', compute='_compute_summary', store=False)
+    pawn_closing_value = fields.Float(string='CK Hàng gửi', compute='_compute_summary', store=False)
+    
+    # === DEBT (Công nợ khách - Tách biệt) ===
+    debt_opening_value = fields.Float(string='ĐK Công nợ', compute='_compute_summary', store=False)
+    debt_closing_value = fields.Float(string='CK Công nợ', compute='_compute_summary', store=False)
+    
+    # Legacy fields (kept for backward compatibility)
     summary_opening_cash = fields.Float(string='Đầu kỳ (Tiền)', compute='_compute_summary', store=False)
     summary_closing_cash = fields.Float(string='Cuối kỳ (Tiền)', compute='_compute_summary', store=False)
     summary_variance = fields.Float(string='Lệch', compute='_compute_summary', store=False)
@@ -35,37 +64,57 @@ class QlvStockBalance(models.Model):
     summary_expense = fields.Float(string='Tiền chi', compute='_compute_summary', store=False)
     summary_price_variance = fields.Float(string='Lệch giá', compute='_compute_summary', store=False)
     
-    @api.depends('line_ids', 'line_ids.closing_value', 'line_ids.opening_qty', 'line_ids.closing_qty')
+    @api.depends('line_ids', 'line_ids.closing_value', 'line_ids.opening_qty', 'line_ids.closing_qty', 'line_ids.ownership_type')
     def _compute_summary(self):
         for report in self:
-            # Get Money product from company settings (fallback to category-based search)
+            # Get Money product from company settings
             money_product = self.env.company.money_product_id
-            if money_product:
-                vnd_lines = report.line_ids.filtered(lambda l: l.product_id == money_product)
-            else:
-                # Fallback: filter by category name if money_product_id not configured
-                vnd_lines = report.line_ids.filtered(
-                    lambda l: l.product_id.categ_id.name in ['Tiền', 'Money', 'Ngoại tệ']
-                )
+            money_categ_names = ['Tiền', 'Money', 'Ngoại tệ', 'VND']
             
-            # Opening cash (sum of opening for VND)
+            def is_money_product(line):
+                if money_product and line.product_id == money_product:
+                    return True
+                return line.product_id.categ_id.name in money_categ_names
+            
+            # === SHOP LINES (ownership_type = 'shop') ===
+            shop_lines = report.line_ids.filtered(lambda l: l.ownership_type == 'shop')
+            shop_cash_lines = shop_lines.filtered(is_money_product)
+            shop_stock_lines = shop_lines.filtered(lambda l: not is_money_product(l))
+            
+            # Shop Cash
+            report.shop_opening_cash = sum(shop_cash_lines.mapped('opening_qty'))
+            report.shop_closing_cash = sum(shop_cash_lines.mapped('closing_qty'))
+            
+            # Shop Stock (non-cash) - use value (qty * price)
+            report.shop_opening_stock_value = sum(shop_stock_lines.mapped(lambda l: l.opening_qty * l.current_price))
+            report.shop_closing_stock_value = sum(shop_stock_lines.mapped('closing_value'))
+            
+            # Shop Totals
+            report.shop_total_opening = report.shop_opening_cash + report.shop_opening_stock_value
+            report.shop_total_closing = report.shop_closing_cash + report.shop_closing_stock_value
+            
+            # P&L = Closing - Opening (Lãi nếu dương, Lỗ nếu âm)
+            report.profit_loss = report.shop_total_closing - report.shop_total_opening
+            
+            # === PAWN LINES (ownership_type = 'customer_pawn') ===
+            pawn_lines = report.line_ids.filtered(lambda l: l.ownership_type == 'customer_pawn')
+            report.pawn_opening_value = sum(pawn_lines.mapped(lambda l: abs(l.opening_qty) * l.current_price))
+            report.pawn_closing_value = sum(pawn_lines.mapped(lambda l: abs(l.closing_qty) * l.current_price))
+            
+            # === DEBT LINES (ownership_type = 'customer_debt') ===
+            debt_lines = report.line_ids.filtered(lambda l: l.ownership_type == 'customer_debt')
+            report.debt_opening_value = sum(debt_lines.mapped(lambda l: l.opening_qty * l.current_price))
+            report.debt_closing_value = sum(debt_lines.mapped(lambda l: l.closing_qty * l.current_price))
+            
+            # === LEGACY FIELDS (backward compatibility) ===
+            vnd_lines = report.line_ids.filtered(is_money_product)
             report.summary_opening_cash = sum(vnd_lines.mapped('opening_qty'))
-            
-            # Closing cash (sum of closing for VND)
             report.summary_closing_cash = sum(vnd_lines.mapped('closing_qty'))
-            
-            # Variance
             report.summary_variance = report.summary_closing_cash - report.summary_opening_cash
-            
-            # Income (In transactions for VND)
             report.summary_income = sum(vnd_lines.mapped('in_qty'))
-            
-            # Expense (Out transactions for VND)
             report.summary_expense = -sum(vnd_lines.mapped('out_qty'))
             
-            # Price variance (difference in total value due to price changes)
-            # This is closing_value - (closing_qty * old_price)
-            # For simplification, we calculate as total value change
+            # Price variance
             total_opening_value = sum(report.line_ids.mapped(lambda l: l.opening_qty * l.current_price))
             total_closing_value = sum(report.line_ids.mapped('closing_value'))
             report.summary_price_variance = total_closing_value - total_opening_value - report.summary_variance
@@ -78,8 +127,74 @@ class QlvStockBalance(models.Model):
             else:
                 report.filtered_line_ids = report.line_ids.filtered(lambda l: l.ownership_type == report.filter_type)
 
+    @api.model
+    def create(self, vals):
+        if vals.get('name', _('New')) == _('New'):
+            # Tạo tên tự động theo format: BC DD/MM/YYYY hoặc BC DD/MM - DD/MM/YYYY
+            date_from = vals.get('date_from') or fields.Date.context_today(self)
+            date_to = vals.get('date_to') or date_from
+            
+            if isinstance(date_from, str):
+                date_from = fields.Date.from_string(date_from)
+            if isinstance(date_to, str):
+                date_to = fields.Date.from_string(date_to)
+            
+            if date_from == date_to:
+                # Báo cáo 1 ngày: BC 18/01/2026
+                vals['name'] = f"BC {date_from.strftime('%d/%m/%Y')}"
+            else:
+                # Báo cáo nhiều ngày: BC 15/01 - 18/01/2026
+                if date_from.year == date_to.year:
+                    vals['name'] = f"BC {date_from.strftime('%d/%m')} - {date_to.strftime('%d/%m/%Y')}"
+                else:
+                    vals['name'] = f"BC {date_from.strftime('%d/%m/%Y')} - {date_to.strftime('%d/%m/%Y')}"
+        return super().create(vals)
+    
+    def action_confirm_report(self):
+        """Chốt sổ - Khóa báo cáo không cho sửa đổi"""
+        self.ensure_one()
+        if self.state == 'confirmed':
+            raise UserError(_("Báo cáo đã được chốt sổ!"))
+        
+        if not self.line_ids:
+            raise UserError(_("Vui lòng cập nhật số liệu trước khi chốt sổ!"))
+        
+        self.write({
+            'state': 'confirmed',
+            'confirmed_date': fields.Datetime.now(),
+            'confirmed_by': self.env.user.id,
+        })
+        
+        return {
+            'type': 'ir.actions.client',
+            'tag': 'display_notification',
+            'params': {
+                'title': _('Chốt sổ thành công'),
+                'message': _('Báo cáo %s đã được chốt sổ.') % self.name,
+                'type': 'success',
+                'sticky': False,
+            }
+        }
+    
+    def action_draft_report(self):
+        """Mở lại báo cáo (chỉ dành cho Admin)"""
+        self.ensure_one()
+        if not self.env.user.has_group('base.group_system'):
+            raise UserError(_("Chỉ Quản trị viên mới có quyền mở lại báo cáo đã chốt!"))
+        
+        self.write({
+            'state': 'draft',
+            'confirmed_date': False,
+            'confirmed_by': False,
+        })
+        return True
+
     def action_compute_report(self):
         self.ensure_one()
+        
+        if self.state == 'confirmed':
+            raise UserError(_("Không thể cập nhật báo cáo đã chốt sổ! Vui lòng mở lại trước."))
+        
         self.line_ids.unlink()
 
         # 1. Timezone & Date Handling (Vietnam UTC+7)

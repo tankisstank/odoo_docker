@@ -45,12 +45,13 @@
 
     <!-- Action for Grouped Line View -->
     <record id="action_qlv_stock_balance_lines_grouped" model="ir.actions.act_window">
-        <field name="name">Chi tiết (Nhóm theo SP)</field>
+        <field name="name">Chi tiết theo Nhóm Sản phẩm</field>
         <field name="res_model">qlv.stock.balance.line</field>
         <field name="view_mode">tree</field>
         <field name="domain">[('report_id', '=', active_id)]</field>
-        <field name="context">{'group_by': ['product_id'], 'expand': True}</field>
+        <field name="context">{'search_default_group_category': 1}</field>
         <field name="view_id" ref="view_qlv_stock_balance_line_tree"/>
+        <field name="search_view_id" ref="view_qlv_stock_balance_line_search"/>
     </record>
 
     <!-- Report Form View -->
@@ -60,24 +61,12 @@
         <field name="arch" type="xml">
             <form string="Stock Balance Report">
                 <header>
-                    <button name="action_compute_report" string="Cập nhật Số liệu" type="object" class="oe_highlight"/>
-                    <field name="filter_type" widget="radio" options="{'horizontal': true}"/>
+                    <button name="action_compute_report" string="Cập nhật Số liệu" type="object" class="oe_highlight" attrs="{'invisible': [('state', '=', 'confirmed')]}"/>
+                    <button name="action_confirm_report" string="Chốt sổ" type="object" class="btn-success" attrs="{'invisible': [('state', '=', 'confirmed')]}" confirm="Bạn có chắc chắn muốn chốt sổ báo cáo này? Sau khi chốt sẽ không thể sửa đổi."/>
+                    <button name="action_draft_report" string="Mở lại" type="object" class="btn-warning" attrs="{'invisible': [('state', '=', 'draft')]}" groups="base.group_system"/>
+                    <field name="state" widget="statusbar" statusbar_visible="draft,confirmed"/>
                 </header>
                 <sheet>
-                    <div class="oe_title">
-                        <h1>
-                            <field name="name"/>
-                        </h1>
-                    </div>
-                    <group>
-                        <group>
-                            <field name="date_from"/>
-                            <field name="date_to"/>
-                        </group>
-                        <group>
-                            <field name="user_id"/>
-                        </group>
-                    </group>
                     <div class="oe_button_box" name="button_box">
                         <button name="%(action_qlv_stock_balance_lines_grouped)d" 
                                 type="action" 
@@ -89,8 +78,54 @@
                             </div>
                         </button>
                     </div>
+                    <widget name="web_ribbon" title="Đã chốt sổ" bg_color="bg-success" attrs="{'invisible': [('state', '!=', 'confirmed')]}"/>
+                    <div class="oe_title">
+                        <h1>
+                            <field name="name"/>
+                        </h1>
+                    </div>
+                    <group>
+                        <group>
+                            <field name="date_from" attrs="{'readonly': [('state', '=', 'confirmed')]}"/>
+                            <field name="date_to" attrs="{'readonly': [('state', '=', 'confirmed')]}"/>
+                            <field name="filter_type" widget="radio" options="{'horizontal': true}"/>
+                        </group>
+                        <group>
+                            <field name="user_id"/>
+                            <field name="confirmed_by" attrs="{'invisible': [('state', '=', 'draft')]}"/>
+                            <field name="confirmed_date" attrs="{'invisible': [('state', '=', 'draft')]}"/>
+                        </group>
+                    </group>
                     <notebook>
-                        <page string="Chi tiết Tồn kho &amp; Công nợ">
+                        <page string="Tổng hợp Lãi/Lỗ" name="page_pnl">
+                            <group>
+                                <group string="TÀI SẢN SHOP (Tính Lãi/Lỗ)" col="4">
+                                    <field name="shop_opening_stock_value" string="ĐK Hàng hóa"/>
+                                    <field name="shop_closing_stock_value" string="CK Hàng hóa"/>
+                                    <field name="shop_opening_cash" string="ĐK Tiền mặt"/>
+                                    <field name="shop_closing_cash" string="CK Tiền mặt"/>
+                                    <field name="shop_total_opening" string="TỔNG ĐẦU KỲ" decoration-bf="1"/>
+                                    <field name="shop_total_closing" string="TỔNG CUỐI KỲ" decoration-bf="1"/>
+                                </group>
+                                <group string="KẾT QUẢ">
+                                    <field name="profit_loss" string="LÃI / LỖ" widget="monetary" options="{'currency_field': 'currency_id'}" 
+                                           decoration-success="profit_loss > 0" decoration-danger="profit_loss &lt; 0"
+                                           class="oe_inline" style="font-size: 1.5em; font-weight: bold;"/>
+                                </group>
+                            </group>
+                            <separator string="THÔNG TIN TÁCH BIỆT"/>
+                            <group>
+                                <group string="Hàng gửi sổ (Pawn)">
+                                    <field name="pawn_opening_value" string="Đầu kỳ"/>
+                                    <field name="pawn_closing_value" string="Cuối kỳ"/>
+                                </group>
+                                <group string="Công nợ Khách">
+                                    <field name="debt_opening_value" string="Đầu kỳ"/>
+                                    <field name="debt_closing_value" string="Cuối kỳ"/>
+                                </group>
+                            </group>
+                        </page>
+                        <page string="Chi tiết Tồn kho &amp; Công nợ" name="page_details">
                             <field name="filtered_line_ids">
                                 <tree string="Lines" 
                                       decoration-info="ownership_type == 'shop'" 
@@ -111,76 +146,25 @@
                                 </tree>
                             </field>
                         </page>
-                        <page string="Tổng hợp theo nhóm">
+                        <page string="Tổng hợp theo nhóm" name="page_summary">
+                            <p class="text-muted">Click vào nút bên dưới để xem chi tiết theo nhóm sản phẩm (có thể mở rộng/thu gọn)</p>
+                            <button name="%(action_qlv_stock_balance_lines_grouped)d" 
+                                    type="action" 
+                                    string="📊 Xem theo Nhóm Sản phẩm" 
+                                    class="btn-primary"
+                                    context="{'active_id': id, 'search_default_group_category': 1}"/>
+                            <separator/>
                             <field name="summary_line_ids">
-                                <tree string="Category Summary" decoration-bf="1">
+                                <tree string="Tổng hợp nhanh" decoration-bf="1">
                                     <field name="sequence" string="STT"/>
                                     <field name="category_id" string="Nhóm SP"/>
-                                    <field name="opening_qty" string="Tồn ĐK TTL" sum="Tổng"/>
-                                    <field name="in_qty" string="Nhập TTL" sum="Tổng"/>
-                                    <field name="out_qty" string="Xuất TTL" sum="Tổng"/>
-                                    <field name="closing_qty" string="Tồn TTL" sum="Tổng" decoration-bf="1"/>
+                                    <field name="opening_qty" string="Tồn ĐK" sum="Tổng"/>
+                                    <field name="in_qty" string="Nhập" sum="Tổng"/>
+                                    <field name="out_qty" string="Xuất" sum="Tổng"/>
+                                    <field name="closing_qty" string="Tồn CK" sum="Tổng" decoration-bf="1"/>
                                     <field name="closing_value" string="Thành tiền" sum="Tổng" decoration-bf="1"/>
                                 </tree>
                             </field>
-                        </page>
-                        <page string="Tổng hợp Lãi Lỗ">
-                            <group>
-                                <group string="Tiền mặt">
-                                    <field name="summary_opening_cash" readonly="1"/>
-                                    <field name="summary_closing_cash" readonly="1"/>
-                                    <field name="summary_variance" readonly="1"/>
-                                </group>
-                                <group string="Thu Chi">
-                                    <field name="summary_income" readonly="1"/>
-                                    <field name="summary_expense" readonly="1"/>
-                                    <field name="summary_price_variance" readonly="1"/>
-                                </group>
-                            </group>
-                            <separator string="Chi tiết"/>
-                            <div class="oe_form_sheet">
-                                <table class="o_list_view table table-sm table-hover table-striped">
-                                    <thead>
-                                        <tr>
-                                            <th>STT</th>
-                                            <th>Đầu kỳ (Tiền)</th>
-                                            <th colspan="2">Cuối kỳ</th>
-                                            <th>Lệch</th>
-                                            <th>Tiền thu</th>
-                                            <th>Trích</th>
-                                            <th>Tiền chi</th>
-                                            <th>Vay</th>
-                                            <th>Lệch giá</th>
-                                        </tr>
-                                        <tr>
-                                            <th></th>
-                                            <th>Tiền</th>
-                                            <th>Tiền</th>
-                                            <th>ĐVT</th>
-                                            <th></th>
-                                            <th></th>
-                                            <th></th>
-                                            <th></th>
-                                            <th></th>
-                                            <th></th>
-                                        </tr>
-                                    </thead>
-                                    <tbody>
-                                        <tr>
-                                            <td>1</td>
-                                            <td class="text-danger"><field name="summary_opening_cash" readonly="1" nolabel="1"/></td>
-                                            <td><field name="summary_closing_cash" readonly="1" nolabel="1"/> VND</td>
-                                            <td></td>
-                                            <td><field name="summary_variance" readonly="1" nolabel="1"/></td>
-                                            <td><field name="summary_income" readonly="1" nolabel="1"/></td>
-                                            <td>-</td>
-                                            <td><field name="summary_expense" readonly="1" nolabel="1"/></td>
-                                            <td>-</td>
-                                            <td><field name="summary_price_variance" readonly="1" nolabel="1"/></td>
-                                        </tr>
-                                    </tbody>
-                                </table>
-                            </div>
                         </page>
                     </notebook>
                 </sheet>
@@ -188,12 +172,46 @@
         </field>
     </record>
 
+    <!-- Report Tree View -->
+    <record id="view_qlv_stock_balance_tree" model="ir.ui.view">
+        <field name="name">qlv.stock.balance.tree</field>
+        <field name="model">qlv.stock.balance</field>
+        <field name="arch" type="xml">
+            <tree string="Báo cáo Lãi/Lỗ" decoration-success="state == 'confirmed'" decoration-muted="state == 'draft'">
+                <field name="name"/>
+                <field name="date_from"/>
+                <field name="date_to"/>
+                <field name="profit_loss" string="Lãi/Lỗ" decoration-success="profit_loss > 0" decoration-danger="profit_loss &lt; 0"/>
+                <field name="state" widget="badge" decoration-success="state == 'confirmed'" decoration-info="state == 'draft'"/>
+                <field name="confirmed_by"/>
+                <field name="confirmed_date"/>
+            </tree>
+        </field>
+    </record>
+
+    <!-- Sequence -->
+    <record id="seq_qlv_stock_balance" model="ir.sequence">
+        <field name="name">QLV Stock Balance Sequence</field>
+        <field name="code">qlv.stock.balance</field>
+        <field name="prefix">BC/%(year)s/</field>
+        <field name="padding">4</field>
+        <field name="company_id" eval="False"/>
+    </record>
+
     <!-- Action -->
     <record id="action_qlv_stock_balance_report" model="ir.actions.act_window">
-        <field name="name">Báo cáo Tổng hợp (X-N-T)</field>
+        <field name="name">Báo cáo Lãi/Lỗ Hàng ngày</field>
         <field name="res_model">qlv.stock.balance</field>
-        <field name="view_mode">form</field>
+        <field name="view_mode">tree,form</field>
         <field name="target">current</field>
-        <field name="context">{'create': False, 'delete': False, 'default_group_by_product': True}</field>
+        <field name="context">{}</field>
+        <field name="help" type="html">
+            <p class="o_view_nocontent_smiling_face">
+                Tạo báo cáo Lãi/Lỗ đầu tiên
+            </p>
+            <p>
+                Báo cáo Lãi/Lỗ hàng ngày giúp bạn theo dõi hiệu quả kinh doanh của cửa hàng.
+            </p>
+        </field>
     </record>
 </odoo>
